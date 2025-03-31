@@ -97,6 +97,12 @@ function loadPage(pageName, callback) {
     if (isLoadingPage) return;
     isLoadingPage = true;
     
+    // IMPORTANTE: Se stiamo caricando esplicitamente la pagina di creazione
+    // ma non abbiamo l'intento di modificare, rimuoviamo l'ID
+    if (pageName === 'create_program.html' && sessionStorage.getItem('editing_intent') !== 'true') {
+        localStorage.removeItem('editProgramId');
+    }
+    
     // Segna la pagina corrente nel menu
     updateActiveMenuItem(pageName);
     

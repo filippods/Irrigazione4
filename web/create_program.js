@@ -1,29 +1,51 @@
 // create_program.js - Script per la pagina di creazione programmi
 
+// Variabili globali
+let editingProgram = null;
+
 // Inizializza la pagina di creazione programma
 function initializeCreateProgramPage() {
     console.log("Inizializzazione pagina creazione programma");
     
-    // IMPORTANTE: Determina se siamo in una pagina di creazione o di modifica
-    const currentPath = window.location.pathname;
+    // Controllo se stiamo esplicitamente modificando un programma
+    // Solo se arriviamo da un'azione esplicita di modifica, manterremo l'ID
+    const intentionallyEditing = sessionStorage.getItem('editing_intent') === 'true';
     
-    // Se siamo in una pagina di creazione, assicuriamoci che non ci sia un ID di modifica
-    // se il percorso termina con 'create_program.html'
-    if (currentPath.endsWith('create_program.html') || currentPath === '/') {
-        // Determina se siamo in modalità modifica
-        const storedEditingProgramId = localStorage.getItem('editProgramId');
-        
-        // Se non siamo in modalità modifica, assicuriamoci che non ci sia un ID salvato
-        if (!storedEditingProgramId) {
-            console.log("Modalità creazione programma");
-            localStorage.removeItem('editProgramId');
-        } else {
-            console.log("Modalità modifica programma, ID:", storedEditingProgramId);
+    if (intentionallyEditing) {
+        // Esplicitamente in modalità modifica, mantieni l'ID
+        const editProgramId = localStorage.getItem('editProgramId');
+        if (editProgramId) {
+            editingProgram = editProgramId;
+            console.log("Modalità modifica programma, ID:", editProgramId);
+            
+            // Cambia il titolo della pagina
+            const pageTitle = document.querySelector('.page-title');
+            if (pageTitle) {
+                pageTitle.textContent = 'Modifica Programma';
+            }
+            
+            // Cambia il testo del pulsante
+            const saveButton = document.getElementById('save-button');
+            if (saveButton) {
+                saveButton.textContent = 'Aggiorna Programma';
+            }
+            
+            // Rimuovi il flag dopo l'uso
+            sessionStorage.removeItem('editing_intent');
         }
+    } else {
+        // Non stiamo esplicitamente modificando, rimuovi qualsiasi ID residuo
+        localStorage.removeItem('editProgramId');
+        editingProgram = null;
+        console.log("Modalità creazione programma");
     }
-    
+
     // Carica i dati utente per ottenere le zone
-    loadUserSettings()
+    fetch('/data/user_settings.json')
+        .then(response => {
+            if (!response.ok) throw new Error('Errore nel caricamento delle impostazioni utente');
+            return response.json();
+        })
         .then(userSettings => {
             // Genera la griglia dei mesi
             generateMonthsGrid();
@@ -37,21 +59,8 @@ function initializeCreateProgramPage() {
             }
             
             // Se stiamo modificando un programma esistente, carica i suoi dati
-            const editingProgramId = localStorage.getItem('editProgramId');
-            if (editingProgramId) {
-                loadProgramData(editingProgramId);
-                
-                // Cambia il titolo della pagina
-                const pageTitle = document.querySelector('.page-title');
-                if (pageTitle) {
-                    pageTitle.textContent = 'Modifica Programma';
-                }
-                
-                // Cambia il testo del pulsante
-                const saveButton = document.getElementById('save-button');
-                if (saveButton) {
-                    saveButton.textContent = 'Aggiorna Programma';
-                }
+            if (editingProgram) {
+                loadProgramData(editingProgram);
             }
         })
         .catch(error => {
@@ -62,24 +71,6 @@ function initializeCreateProgramPage() {
                 alert('Errore nel caricamento delle impostazioni');
             }
         });
-}
-
-// Carica le impostazioni utente
-function loadUserSettings() {
-    return new Promise((resolve, reject) => {
-        fetch('/data/user_settings.json')
-            .then(response => {
-                if (!response.ok) throw new Error('Errore nel caricamento delle impostazioni utente');
-                return response.json();
-            })
-            .then(userSettings => {
-                resolve(userSettings);
-            })
-            .catch(error => {
-                console.error('Errore:', error);
-                reject(error);
-            });
-    });
 }
 
 // Genera la griglia dei mesi
@@ -394,14 +385,13 @@ function saveProgram() {
     }
     
     // Se stiamo modificando un programma esistente, aggiungi l'ID
-    const editingProgramId = localStorage.getItem('editProgramId');
-    if (editingProgramId) {
-        program.id = editingProgramId;
+    if (editingProgram) {
+        program.id = editingProgram;
     }
     
     // Determina l'endpoint e il metodo in base all'operazione
-    const endpoint = editingProgramId ? '/update_program' : '/save_program';
-    const method = editingProgramId ? 'PUT' : 'POST';
+    const endpoint = editingProgram ? '/update_program' : '/save_program';
+    const method = editingProgram ? 'PUT' : 'POST';
     
     // Invia la richiesta al server
     fetch(endpoint, {
@@ -420,13 +410,14 @@ function saveProgram() {
     .then(data => {
         if (data.success) {
             if (typeof showToast === 'function') {
-                showToast(`Programma ${editingProgramId ? 'aggiornato' : 'salvato'} con successo`, 'success');
+                showToast(`Programma ${editingProgram ? 'aggiornato' : 'salvato'} con successo`, 'success');
             } else {
-                alert(`Programma ${editingProgramId ? 'aggiornato' : 'salvato'} con successo`);
+                alert(`Programma ${editingProgram ? 'aggiornato' : 'salvato'} con successo`);
             }
             
             // Pulisci il localStorage se stavamo modificando un programma
             localStorage.removeItem('editProgramId');
+            editingProgram = null;
             
             // Torna alla pagina dei programmi dopo un breve ritardo
             setTimeout(() => {
@@ -456,6 +447,7 @@ function saveProgram() {
 function goBack() {
     // Pulisci il localStorage se stavamo modificando un programma
     localStorage.removeItem('editProgramId');
+    editingProgram = null;
     
     // Torna alla pagina dei programmi
     loadPage('view_programs.html');
