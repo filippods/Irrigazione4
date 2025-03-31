@@ -97,10 +97,17 @@ function loadPage(pageName, callback) {
     if (isLoadingPage) return;
     isLoadingPage = true;
     
-    // IMPORTANTE: Se stiamo caricando esplicitamente la pagina di creazione
-    // ma non abbiamo l'intento di modificare, rimuoviamo l'ID
-    if (pageName === 'create_program.html' && sessionStorage.getItem('editing_intent') !== 'true') {
+    if (pageName === 'create_program.html') {
+        // Rimuovi sempre l'ID quando vai alla pagina di creazione
         localStorage.removeItem('editProgramId');
+        sessionStorage.removeItem('editing_intent');
+    } else if (pageName !== 'modify_program.html') {
+        // Se stiamo andando a una pagina che non è né creazione né modifica,
+        // possiamo pulire l'ID (a meno che non stiamo salvando un form)
+        if (!pageName.includes('save') && !pageName.includes('update')) {
+            localStorage.removeItem('editProgramId');
+            sessionStorage.removeItem('editing_intent');
+        }
     }
     
     // Segna la pagina corrente nel menu
@@ -204,6 +211,11 @@ function loadPage(pageName, callback) {
 
 // Funzione per caricare uno script
 function loadScript(url, callback) {
+    // Prima rimuovi qualsiasi script esistente con lo stesso URL
+    const existingScripts = document.querySelectorAll(`script[src="${url}"]`);
+    existingScripts.forEach(script => script.remove());
+    
+    // Ora crea un nuovo script
     const script = document.createElement('script');
     script.src = url;
     script.onload = callback;

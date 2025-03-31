@@ -1,21 +1,20 @@
 // create_program.js - Script per la pagina di creazione programmi
 
-// Variabili globali
-let editingProgram = null;
+// Verifica se la variabile è già stata dichiarata per evitare errori
+// in caso di ricarica dello script
+if (typeof window.editingProgramVar === 'undefined') {
+    window.editingProgramVar = null;
+}
 
 // Inizializza la pagina di creazione programma
 function initializeCreateProgramPage() {
     console.log("Inizializzazione pagina creazione programma");
     
-    // Controllo se stiamo esplicitamente modificando un programma
-    // Solo se arriviamo da un'azione esplicita di modifica, manterremo l'ID
-    const intentionallyEditing = sessionStorage.getItem('editing_intent') === 'true';
-    
-    if (intentionallyEditing) {
-        // Esplicitamente in modalità modifica, mantieni l'ID
-        const editProgramId = localStorage.getItem('editProgramId');
-        if (editProgramId) {
-            editingProgram = editProgramId;
+    // In questa pagina, rimuoviamo sempre qualsiasi ID di programma
+    // Questa pagina è SOLO per creare nuovi programmi
+    localStorage.removeItem('editProgramId');
+    sessionStorage.removeItem('editing_intent');
+    window.editingProgramVar = null;
             console.log("Modalità modifica programma, ID:", editProgramId);
             
             // Cambia il titolo della pagina
@@ -33,12 +32,7 @@ function initializeCreateProgramPage() {
             // Rimuovi il flag dopo l'uso
             sessionStorage.removeItem('editing_intent');
         }
-    } else {
-        // Non stiamo esplicitamente modificando, rimuovi qualsiasi ID residuo
-        localStorage.removeItem('editProgramId');
-        editingProgram = null;
-        console.log("Modalità creazione programma");
-    }
+    console.log("Modalità creazione nuovo programma");
 
     // Carica i dati utente per ottenere le zone
     fetch('/data/user_settings.json')
@@ -57,11 +51,7 @@ function initializeCreateProgramPage() {
                 console.error("Nessuna zona trovata nelle impostazioni");
                 showToast("Errore: nessuna zona configurata", "error");
             }
-            
-            // Se stiamo modificando un programma esistente, carica i suoi dati
-            if (editingProgram) {
-                loadProgramData(editingProgram);
-            }
+            // Nella pagina di creazione, non carichiamo mai dati di programmi esistenti
         })
         .catch(error => {
             console.error('Errore nel caricamento delle impostazioni:', error);
@@ -384,14 +374,9 @@ function saveProgram() {
         program.interval_days = intervalDays;
     }
     
-    // Se stiamo modificando un programma esistente, aggiungi l'ID
-    if (editingProgram) {
-        program.id = editingProgram;
-    }
-    
-    // Determina l'endpoint e il metodo in base all'operazione
-    const endpoint = editingProgram ? '/update_program' : '/save_program';
-    const method = editingProgram ? 'PUT' : 'POST';
+    // In questa pagina creiamo sempre nuovi programmi
+    const endpoint = '/save_program';
+    const method = 'POST';
     
     // Invia la richiesta al server
     fetch(endpoint, {
@@ -410,14 +395,10 @@ function saveProgram() {
     .then(data => {
         if (data.success) {
             if (typeof showToast === 'function') {
-                showToast(`Programma ${editingProgram ? 'aggiornato' : 'salvato'} con successo`, 'success');
+                showToast(`Programma salvato con successo`, 'success');
             } else {
-                alert(`Programma ${editingProgram ? 'aggiornato' : 'salvato'} con successo`);
+                alert(`Programma salvato con successo`);
             }
-            
-            // Pulisci il localStorage se stavamo modificando un programma
-            localStorage.removeItem('editProgramId');
-            editingProgram = null;
             
             // Torna alla pagina dei programmi dopo un breve ritardo
             setTimeout(() => {

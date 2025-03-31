@@ -473,12 +473,14 @@ function stopProgram() {
     });
 }
 
-// Funzione per modificare un programma
+// Funzione editProgram in view_programs.js
+
 function editProgram(programId) {
     // Salva l'ID del programma in localStorage per recuperarlo nella pagina di modifica
     localStorage.setItem('editProgramId', programId);
-    // Vai alla pagina di modifica
-    loadPage('create_program.html');
+    
+    // Vai alla pagina dedicata alla modifica
+    loadPage('modify_program.html');
 }
 
 // Funzione per eliminare un programma

@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="it">
 <head>
     <style>
         body {
@@ -80,7 +80,7 @@
             color: white;
         }
 
-        button {
+        .button {
             padding: 12px 20px;
             margin-top: 20px;
             border: none;
@@ -93,9 +93,24 @@
             transition: background-color 0.3s ease, box-shadow 0.3s ease;
         }
 
-        button:hover {
+        .button:hover {
             background-color: #007acc;
             box-shadow: 0 4px 8px rgba(0, 136, 255, 0.4);
+        }
+        
+        .save-btn {
+            background-color: #0099ff;
+        }
+        
+        .cancel-btn {
+            background-color: #999;
+            margin-left: 10px;
+        }
+        
+        .button-container {
+            display: flex;
+            justify-content: center;
+            margin-top: 20px;
         }
     </style>
 </head>
@@ -131,13 +146,10 @@
                 <label>Zone da Attivare:</label>
                 <div id="zone-list" class="zone-list"></div>
             </div>
-            <div>
-                <button onclick="saveProgram()">Salva Modifiche</button>
+            <div class="button-container">
+                <button onclick="saveProgram()" class="button save-btn">Salva Modifiche</button>
+                <button onclick="cancelEdit()" class="button cancel-btn">Annulla</button>
             </div>
-			<div>
-			<button onclick="saveProgram()" class="save-btn">Salva Modifiche</button>
-			<button onclick="cancelEdit()" class="cancel-btn" style="background-color:#999;margin-left:10px;">Annulla</button>
-			</div>
         </div>
     </main>
     <script src="modify_program.js"></script>
