@@ -1,12 +1,4 @@
-// create_program.js - Script per la pagina di creazione programmi (versione corretta)
-
-// Variabili globali
-let editingProgramId = null;
-const months = [
-    'Gennaio', 'Febbraio', 'Marzo', 'Aprile', 
-    'Maggio', 'Giugno', 'Luglio', 'Agosto', 
-    'Settembre', 'Ottobre', 'Novembre', 'Dicembre'
-];
+// create_program.js - Script per la pagina di creazione programmi
 
 // Inizializza la pagina di creazione programma
 function initializeCreateProgramPage() {
@@ -19,14 +11,14 @@ function initializeCreateProgramPage() {
     // se il percorso termina con 'create_program.html'
     if (currentPath.endsWith('create_program.html') || currentPath === '/') {
         // Determina se siamo in modalità modifica
-        editingProgramId = localStorage.getItem('editProgramId');
+        const storedEditingProgramId = localStorage.getItem('editProgramId');
         
         // Se non siamo in modalità modifica, assicuriamoci che non ci sia un ID salvato
-        if (!editingProgramId) {
+        if (!storedEditingProgramId) {
             console.log("Modalità creazione programma");
             localStorage.removeItem('editProgramId');
         } else {
-            console.log("Modalità modifica programma, ID:", editingProgramId);
+            console.log("Modalità modifica programma, ID:", storedEditingProgramId);
         }
     }
     
@@ -45,6 +37,7 @@ function initializeCreateProgramPage() {
             }
             
             // Se stiamo modificando un programma esistente, carica i suoi dati
+            const editingProgramId = localStorage.getItem('editProgramId');
             if (editingProgramId) {
                 loadProgramData(editingProgramId);
                 
@@ -98,6 +91,12 @@ function generateMonthsGrid() {
     }
     
     monthsGrid.innerHTML = '';
+    
+    const months = [
+        'Gennaio', 'Febbraio', 'Marzo', 'Aprile', 
+        'Maggio', 'Giugno', 'Luglio', 'Agosto', 
+        'Settembre', 'Ottobre', 'Novembre', 'Dicembre'
+    ];
     
     months.forEach(month => {
         const monthItem = document.createElement('div');
@@ -395,6 +394,7 @@ function saveProgram() {
     }
     
     // Se stiamo modificando un programma esistente, aggiungi l'ID
+    const editingProgramId = localStorage.getItem('editProgramId');
     if (editingProgramId) {
         program.id = editingProgramId;
     }

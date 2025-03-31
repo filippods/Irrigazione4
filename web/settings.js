@@ -2,9 +2,8 @@
 
 // Variabili globali
 let isLoading = false;
-let connectionStatusInterval = null;
+let settingsStatusInterval = null;
 let wifiNetworks = [];
-let userSettings = {};
 let settingsModified = {
     wifi: false,
     zones: false,
@@ -47,7 +46,7 @@ function initializeSettingsPage(userData) {
 // Carica le impostazioni con i dati forniti
 function loadSettingsWithData(data) {
     console.log("Caricamento impostazioni con dati:", data);
-    userSettings = data || {};
+    window.userData = data || {};
     
     // Impostazioni WiFi
     document.getElementById('client-enabled').checked = data.client_enabled || false;
@@ -371,8 +370,8 @@ function connectToWifi() {
             showToast(`Connesso a ${ssid} con successo`, 'success');
             
             // Aggiorna le impostazioni
-            userSettings.client_enabled = true;
-            userSettings.wifi = { ssid, password };
+            window.userData.client_enabled = true;
+            window.userData.wifi = { ssid, password };
             
             // Aggiorna l'interfaccia
             document.getElementById('client-enabled').checked = true;
@@ -654,7 +653,7 @@ function saveSettings(settings, onSuccess, onError) {
     .then(data => {
         if (data.success) {
             // Aggiorna le impostazioni locali
-            Object.assign(userSettings, settings);
+            Object.assign(window.userData, settings);
             
             // Callback di successo
             if (onSuccess) onSuccess();
@@ -683,14 +682,14 @@ function startConnectionStatusPolling() {
     fetchConnectionStatus();
     
     // Poi ogni 10 secondi
-    connectionStatusInterval = setInterval(fetchConnectionStatus, 10000);
+    settingsStatusInterval = setInterval(fetchConnectionStatus, 10000);
     console.log("Polling dello stato della connessione avviato");
 }
 
 function stopConnectionStatusPolling() {
-    if (connectionStatusInterval) {
-        clearInterval(connectionStatusInterval);
-        connectionStatusInterval = null;
+    if (settingsStatusInterval) {
+        clearInterval(settingsStatusInterval);
+        settingsStatusInterval = null;
         console.log("Polling dello stato della connessione fermato");
     }
 }
@@ -912,6 +911,13 @@ function factoryReset() {
             factoryResetButton.disabled = false;
         }
     });
+}
+
+// Azzera il file wifi_scan.json
+function clearWifiScanFile() {
+    fetch('/clear_wifi_scan_file', { method: 'POST' })
+        .then(response => console.log('File wifi_scan.json azzerato'))
+        .catch(error => console.error('Errore durante l\'azzeramento del file wifi_scan.json:', error));
 }
 
 // Inizializzazione quando il documento è caricato

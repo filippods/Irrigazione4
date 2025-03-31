@@ -1,10 +1,9 @@
-// view_programs.js - Script per la pagina di visualizzazione programmi (versione corretta)
+// view_programs.js - Script per la pagina di visualizzazione programmi
 
 // Variabili globali
 let programStatusInterval = null;
-let userSettings = {};
-let zoneNameMap = {};
 let programsData = {};
+let zoneNameMap = {};
 
 // Inizializza la pagina
 function initializeViewProgramsPage() {
@@ -148,7 +147,7 @@ function loadUserSettingsAndPrograms() {
         })
     ])
     .then(([settings, programs, state]) => {
-        userSettings = settings;
+        const loadedUserSettings = settings;
         
         // Crea una mappa di ID zona -> nome zona
         zoneNameMap = {};
@@ -303,22 +302,38 @@ function renderProgramCards(programs, state) {
                     </button>
                 </div>
             </div>
-            <div class="auto-control">
-                <div class="auto-switch">
-                    <button class="auto-btn on ${userSettings.automatic_programs_enabled ? 'active' : ''}" 
-                            onclick="toggleAutomaticPrograms(true)">
-                        Auto ON
-                    </button>
-                    <button class="auto-btn off ${!userSettings.automatic_programs_enabled ? 'active' : ''}" 
-                            onclick="toggleAutomaticPrograms(false)">
-                        Auto OFF
-                    </button>
-                </div>
-            </div>
         `;
         
         container.appendChild(programCard);
     });
+    
+    // Aggiungi controllo programmi automatici globale
+    const autoControlContainer = document.createElement('div');
+    autoControlContainer.className = 'auto-control';
+    autoControlContainer.style.gridColumn = '1/-1';
+    autoControlContainer.style.margin = '20px 0';
+    autoControlContainer.style.padding = '15px';
+    autoControlContainer.style.backgroundColor = '#f9f9f9';
+    autoControlContainer.style.borderRadius = '12px';
+    autoControlContainer.style.boxShadow = '0 4px 8px rgba(0, 0, 0, 0.05)';
+    autoControlContainer.style.textAlign = 'center';
+    
+    // Verifica se i programmi automatici sono abilitati dalle impostazioni utente
+    const autoEnabled = window.userData && window.userData.automatic_programs_enabled;
+    
+    autoControlContainer.innerHTML = `
+        <h3 style="margin-bottom:15px">Controllo Globale Programmi Automatici</h3>
+        <div class="auto-switch" style="display:inline-flex;border-radius:24px;overflow:hidden;box-shadow:0 2px 4px rgba(0,0,0,0.1)">
+            <button class="auto-btn on ${autoEnabled ? 'active' : ''}" onclick="toggleAutomaticPrograms(true)">
+                Automatici ON
+            </button>
+            <button class="auto-btn off ${!autoEnabled ? 'active' : ''}" onclick="toggleAutomaticPrograms(false)">
+                Automatici OFF
+            </button>
+        </div>
+    `;
+    
+    container.appendChild(autoControlContainer);
 }
 
 // Formatta la cadenza per la visualizzazione
@@ -513,7 +528,11 @@ function toggleAutomaticPrograms(enable) {
     .then(response => response.json())
     .then(data => {
         if (data.success) {
-            userSettings.automatic_programs_enabled = enable;
+            // Aggiorna lo stato globale
+            if (window.userData) {
+                window.userData.automatic_programs_enabled = enable;
+            }
+            
             updateAutoProgramsStatus(enable);
             
             // Aggiorna lo stato attivo dei pulsanti
