@@ -20,7 +20,10 @@ function initializeManualPage(userData) {
     } else {
         // Se userData non è disponibile, carica le impostazioni dal server
         fetch('/data/user_settings.json')
-            .then(response => response.json())
+            .then(response => {
+                if (!response.ok) throw new Error('Errore nel caricamento delle impostazioni utente');
+                return response.json();
+            })
             .then(data => {
                 userSettings = data;
                 maxActiveZones = data.max_active_zones || 3;
@@ -78,7 +81,7 @@ function renderZones(zones) {
     if (!container) return;
     
     // Filtra solo le zone visibili (status: "show")
-    const visibleZones = zones.filter(zone => zone.status === "show");
+    const visibleZones = Array.isArray(zones) ? zones.filter(zone => zone && zone.status === "show") : [];
     
     if (visibleZones.length === 0) {
         container.innerHTML = `
@@ -96,6 +99,8 @@ function renderZones(zones) {
     container.innerHTML = '';
     
     visibleZones.forEach(zone => {
+        if (!zone || zone.id === undefined) return;
+        
         const zoneCard = document.createElement('div');
         zoneCard.className = 'zone-card';
         zoneCard.id = `zone-${zone.id}`;
@@ -151,6 +156,8 @@ function updateZonesUI(zonesStatus) {
     if (!Array.isArray(zonesStatus)) return;
     
     zonesStatus.forEach(zone => {
+        if (!zone || zone.id === undefined) return;
+        
         const toggle = document.getElementById(`toggle-${zone.id}`);
         const zoneCard = document.getElementById(`zone-${zone.id}`);
         
@@ -408,7 +415,7 @@ function attachZoneToggleFunctions() {
             if (isChecked) {
                 // Avvia la zona
                 const durationInput = document.getElementById(`duration-${zoneId}`);
-                const duration = parseInt(durationInput.value);
+                const duration = durationInput ? parseInt(durationInput.value) : 0;
                 
                 if (isNaN(duration) || duration <= 0) {
                     showToast('Inserisci una durata valida in minuti', 'warning');

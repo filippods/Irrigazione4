@@ -67,6 +67,8 @@
             border-radius: 6px;
             font-size: 14px;
             transition: border-color 0.3s ease, box-shadow 0.3s ease;
+            width: 100%;
+            box-sizing: border-box;
         }
 
         .input-control:focus {
@@ -86,6 +88,7 @@
             display: inline-flex;
             align-items: center;
             justify-content: center;
+            min-width: 120px;
         }
 
         .button.primary {
@@ -146,6 +149,8 @@
             padding: 15px;
             border: 1px solid #eee;
             transition: all 0.2s ease;
+            display: flex;
+            flex-direction: column;
         }
 
         .zone-card:hover {
@@ -354,6 +359,7 @@
             padding-bottom: 10px;
         }
 
+        /* Responsive Improvements */
         @media (max-width: 600px) {
             .zones-grid {
                 grid-template-columns: 1fr;
@@ -366,10 +372,31 @@
             .input-row {
                 flex-direction: column;
                 align-items: stretch;
+                gap: 8px;
             }
             
             .button {
                 width: 100%;
+                min-width: auto;
+            }
+            
+            .toggle-switch {
+                margin-top: 5px;
+                margin-left: 0;
+            }
+            
+            .card-content {
+                padding: 15px;
+            }
+        }
+        
+        @media (min-width: 601px) and (max-width: 900px) {
+            .zones-grid {
+                grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            }
+            
+            .system-actions {
+                grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
             }
         }
     </style>

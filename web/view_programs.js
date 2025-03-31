@@ -16,11 +16,10 @@ function initializeViewProgramsPage() {
     // Avvia il polling dello stato dei programmi
     startProgramStatusPolling();
     
-    // Imposta handlers per la pulizia quando l'utente lascia la pagina
+    // Ascoltatori per la pulizia quando l'utente lascia la pagina
     window.addEventListener('pagehide', cleanupViewProgramsPage);
     
     // Esponi la funzione di aggiornamento stato programma globalmente
-    // (usato da altre pagine come scripts.js per aggiornare lo stato quando viene eseguito un arresto totale)
     window.fetchProgramState = fetchProgramState;
 }
 
@@ -133,7 +132,7 @@ function loadUserSettingsAndPrograms() {
         programsContainer.innerHTML = '<div class="loading">Caricamento programmi...</div>';
     }
     
-    // Prima carica le impostazioni utente (per ottenere i nomi delle zone)
+    // Carica prima le impostazioni utente
     fetch('/data/user_settings.json')
         .then(response => {
             if (!response.ok) throw new Error('Errore nel caricamento delle impostazioni utente');
@@ -144,9 +143,13 @@ function loadUserSettingsAndPrograms() {
             
             // Crea una mappa di ID zona -> nome zona
             zoneNameMap = {};
-            settings.zones.forEach(zone => {
-                zoneNameMap[zone.id] = zone.name;
-            });
+            if (settings.zones && Array.isArray(settings.zones)) {
+                settings.zones.forEach(zone => {
+                    if (zone && zone.id !== undefined) {
+                        zoneNameMap[zone.id] = zone.name || `Zona ${zone.id + 1}`;
+                    }
+                });
+            }
             
             // Aggiorna lo stato dei programmi automatici
             updateAutoProgramsStatus(settings.automatic_programs_enabled || false);
@@ -160,9 +163,9 @@ function loadUserSettingsAndPrograms() {
         })
         .then(programs => {
             // Salva i programmi per riferimento futuro
-            programsData = programs;
+            programsData = programs || {};
             
-            // Poi ottieni lo stato del programma corrente
+            // Ottieni lo stato del programma corrente
             return fetch('/get_program_state');
         })
         .then(response => {
@@ -209,9 +212,9 @@ function renderProgramCards(programs, state) {
     const container = document.getElementById('programs-container');
     if (!container) return;
     
-    const programIds = Object.keys(programs);
+    const programIds = programs ? Object.keys(programs) : [];
     
-    if (programIds.length === 0) {
+    if (!programs || programIds.length === 0) {
         // Nessun programma trovato
         container.innerHTML = `
             <div class="empty-state">
@@ -228,6 +231,8 @@ function renderProgramCards(programs, state) {
     // Per ogni programma, crea una card
     programIds.forEach(programId => {
         const program = programs[programId];
+        if (!program) return; // Salta se il programma è nullo
+        
         const isActive = state.program_running && state.current_program_id === programId;
         
         // Costruisci la visualizzazione dei mesi
@@ -340,7 +345,8 @@ function buildMonthsGrid(activeMonths) {
         'Settembre', 'Ottobre', 'Novembre', 'Dicembre'
     ];
     
-    const activeMonthsSet = new Set(activeMonths);
+    // Crea un Set per controlli di appartenenza più efficienti
+    const activeMonthsSet = new Set(activeMonths || []);
     
     return months.map(month => {
         const isActive = activeMonthsSet.has(month);
@@ -359,11 +365,13 @@ function buildZonesGrid(steps) {
     }
     
     return steps.map(step => {
+        if (!step || step.zone_id === undefined) return '';
+        
         const zoneName = zoneNameMap[step.zone_id] || `Zona ${step.zone_id + 1}`;
         return `
             <div class="zone-tag">
                 ${zoneName}
-                <span class="duration">${step.duration} min</span>
+                <span class="duration">${step.duration || 0} min</span>
             </div>
         `;
     }).join('');
@@ -443,7 +451,7 @@ function editProgram(programId) {
     // Salva l'ID del programma in localStorage per recuperarlo nella pagina di modifica
     localStorage.setItem('editProgramId', programId);
     // Vai alla pagina di modifica
-    loadPage('modify_program.html');
+    loadPage('create_program.html');
 }
 
 // Funzione per eliminare un programma

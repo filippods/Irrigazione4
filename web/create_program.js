@@ -1,6 +1,6 @@
 // create_program.js - Script per la pagina di creazione programmi
 
-// Flag per indicare se si sta modificando un programma esistente
+// Variabili globali
 let editingProgramId = null;
 let userZones = [];
 const months = [
@@ -12,6 +12,17 @@ const months = [
 // Inizializza la pagina di creazione programma
 function initializeCreateProgramPage() {
     console.log("Inizializzazione pagina creazione programma");
+    
+    // IMPORTANTE: Pulisci qualsiasi valore precedente di editProgramId
+    // Solo se stiamo nella pagina di creazione e non di modifica
+    const currentPath = window.location.pathname;
+    if (currentPath.endsWith('create_program.html')) {
+        // Se siamo nella pagina di creazione, assicuriamoci che non ci sia un ID di modifica
+        if (localStorage.getItem('editProgramId')) {
+            console.log("Ripulito editProgramId dalla localStorage nella pagina di creazione");
+            localStorage.removeItem('editProgramId');
+        }
+    }
     
     // Verifica se stiamo modificando un programma esistente
     editingProgramId = localStorage.getItem('editProgramId');
@@ -51,7 +62,12 @@ function loadUserSettings() {
                 return response.json();
             })
             .then(userSettings => {
-                userZones = userSettings.zones.filter(zone => zone.status === 'show');
+                // Filtra solo le zone visibili
+                if (userSettings.zones && Array.isArray(userSettings.zones)) {
+                    userZones = userSettings.zones.filter(zone => zone && zone.status === 'show');
+                } else {
+                    userZones = [];
+                }
                 resolve(userSettings);
             })
             .catch(error => {
@@ -90,7 +106,8 @@ function generateZonesGrid(zones) {
     zonesGrid.innerHTML = '';
     
     // Filtra solo le zone visibili
-    const visibleZones = zones.filter(zone => zone.status === 'show');
+    const visibleZones = zones && Array.isArray(zones) ? 
+                        zones.filter(zone => zone && zone.status === 'show') : [];
     
     if (visibleZones.length === 0) {
         zonesGrid.innerHTML = `
@@ -105,6 +122,8 @@ function generateZonesGrid(zones) {
     }
     
     visibleZones.forEach(zone => {
+        if (!zone || zone.id === undefined) return;
+        
         const zoneItem = document.createElement('div');
         zoneItem.className = 'zone-item';
         zoneItem.dataset.zoneId = zone.id;
@@ -164,6 +183,10 @@ function loadProgramData(programId) {
             return response.json();
         })
         .then(programs => {
+            if (!programs || typeof programs !== 'object') {
+                throw new Error('Formato programmi non valido');
+            }
+            
             const program = programs[programId];
             if (!program) {
                 throw new Error('Programma non trovato');
@@ -193,6 +216,8 @@ function loadProgramData(programId) {
             // Seleziona le zone e imposta le durate
             if (program.steps && program.steps.length > 0) {
                 program.steps.forEach(step => {
+                    if (!step || step.zone_id === undefined) return;
+                    
                     const checkbox = document.getElementById(`zone-${step.zone_id}`);
                     const durationInput = document.getElementById(`duration-${step.zone_id}`);
                     

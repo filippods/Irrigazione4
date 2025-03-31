@@ -223,6 +223,12 @@ def get_user_settings(request):
     """API per ottenere le impostazioni utente."""
     try:
         settings = load_user_settings()
+        # Assicurati che il pin del relè di sicurezza sia sempre presente nella risposta
+        if 'safety_relay' not in settings:
+            settings['safety_relay'] = {'pin': 13}  # Valore di default
+        elif 'pin' not in settings['safety_relay']:
+            settings['safety_relay']['pin'] = 13  # Valore di default
+            
         return json_response(settings)
     except Exception as e:
         log_event(f"Errore durante il caricamento di user_settings.json: {e}", "ERROR")
@@ -287,7 +293,7 @@ def handle_start_zone(request):
 
         if zone_id is None or duration is None:
             log_event("Errore: parametri mancanti per l'avvio della zona", "ERROR")
-            return json_response({'error': 'Parametri mancanti'}, 400)
+            return json_response({'error': 'Parametri mancanti', 'success': False}, 400)
 
         zone_id = int(zone_id)
         duration = int(duration)
@@ -297,13 +303,13 @@ def handle_start_zone(request):
         max_duration = settings.get('max_zone_duration', 180)  # Default 3 ore
         if duration <= 0 or duration > max_duration:
             log_event(f"Errore: durata non valida per l'avvio della zona {zone_id}: {duration}", "ERROR")
-            return json_response({'error': f'Durata non valida. Deve essere tra 1 e {max_duration} minuti'}, 400)
+            return json_response({'error': f'Durata non valida. Deve essere tra 1 e {max_duration} minuti', 'success': False}, 400)
 
         # Verifica se un programma è in esecuzione
         load_program_state()
         if program_running:
             log_event(f"Impossibile avviare la zona {zone_id}: un programma è già in esecuzione", "WARNING")
-            return json_response({'error': 'Impossibile avviare la zona: un programma è già in esecuzione'}, 400)
+            return json_response({'error': 'Impossibile avviare la zona: un programma è già in esecuzione', 'success': False}, 400)
 
         log_event(f"Avvio della zona {zone_id} per {duration} minuti", "INFO")
         print(f"Avvio della zona {zone_id} per {duration} minuti")
@@ -330,7 +336,7 @@ def handle_stop_zone(request):
 
         if zone_id is None:
             log_event("Errore: parametro zone_id mancante", "ERROR")
-            return json_response({'error': 'Parametro zone_id mancante'}, 400)
+            return json_response({'error': 'Parametro zone_id mancante', 'success': False}, 400)
 
         zone_id = int(zone_id)
 

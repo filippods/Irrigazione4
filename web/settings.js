@@ -45,6 +45,7 @@ function initializeSettingsPage(userData) {
 
 // Carica le impostazioni con i dati forniti
 function loadSettingsWithData(data) {
+    console.log("Dati impostazioni caricate:", data);
     userSettings = data;
     
     // Impostazioni WiFi
@@ -76,9 +77,10 @@ function loadSettingsWithData(data) {
     document.getElementById('activation-delay').value = data.activation_delay || 0;
     document.getElementById('max-zone-duration').value = data.max_zone_duration || 180;
     
-    if (data.safety_relay) {
-        document.getElementById('safety-relay-pin').value = data.safety_relay.pin || 13;
-    }
+    // Imposta il valore del pin del relè di sicurezza
+    const safetyRelayPin = data.safety_relay && data.safety_relay.pin !== undefined ? 
+                        data.safety_relay.pin : 13;
+    document.getElementById('safety-relay-pin').value = safetyRelayPin;
     
     document.getElementById('automatic-programs-enabled').checked = data.automatic_programs_enabled || false;
     
@@ -142,12 +144,17 @@ function renderZonesSettings(zones) {
     
     zonesGrid.innerHTML = '';
     
-    if (!zones || zones.length === 0) {
+    if (!zones || !Array.isArray(zones) || zones.length === 0) {
         zonesGrid.innerHTML = '<p style="text-align:center; grid-column: 1/-1;">Nessuna zona configurata</p>';
         return;
     }
     
+    // Debug delle zone
+    console.log("Rendering zones:", zones);
+    
     zones.forEach(zone => {
+        if (!zone || zone.id === undefined) return;
+        
         const zoneCard = document.createElement('div');
         zoneCard.className = 'zone-card';
         zoneCard.dataset.zoneId = zone.id;
@@ -163,7 +170,7 @@ function renderZonesSettings(zones) {
             <div class="input-group">
                 <label for="zone-pin-${zone.id}">PIN:</label>
                 <input type="number" id="zone-pin-${zone.id}" class="input-control zone-pin-input" 
-                       value="${zone.pin || ''}" min="0" max="40" 
+                       value="${zone.pin !== undefined ? zone.pin : ''}" min="0" max="40" 
                        placeholder="Numero pin" data-zone-id="${zone.id}">
             </div>
             <div class="input-group">
@@ -253,7 +260,7 @@ function displayWifiNetworks(networks) {
     // Aggiorna la select
     wifiList.innerHTML = '';
     
-    if (networks.length === 0) {
+    if (!networks || !Array.isArray(networks) || networks.length === 0) {
         wifiList.innerHTML = '<option value="">Nessuna rete trovata</option>';
         networksContainer.style.display = 'none';
         return;
@@ -261,20 +268,24 @@ function displayWifiNetworks(networks) {
     
     // Popola la select
     networks.forEach(network => {
+        if (!network || !network.ssid) return;
+        
         const option = document.createElement('option');
         option.value = network.ssid;
-        option.textContent = `${network.ssid} (${network.signal})`;
+        option.textContent = `${network.ssid} (${network.signal || 'Segnale sconosciuto'})`;
         wifiList.appendChild(option);
     });
     
     // Popola il container con le reti come lista cliccabile
     networksContainer.innerHTML = '';
     networks.forEach(network => {
+        if (!network || !network.ssid) return;
+        
         const networkElement = document.createElement('div');
         networkElement.className = 'wifi-network';
         networkElement.innerHTML = `
             <span class="wifi-name">${network.ssid}</span>
-            <span class="wifi-signal">${network.signal}</span>
+            <span class="wifi-signal">${network.signal || 'Segnale sconosciuto'}</span>
         `;
         
         // Click sulla rete seleziona la stessa nella select

@@ -7,6 +7,8 @@
             grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
             gap: 20px;
             padding: 10px;
+            max-width: 1200px;
+            margin: 0 auto;
         }
 
         .zone-card {
@@ -17,6 +19,8 @@
             transition: all 0.3s ease;
             display: flex;
             flex-direction: column;
+            position: relative;
+            overflow: hidden;
         }
 
         .zone-card:hover {
@@ -30,6 +34,9 @@
             color: #333;
             text-align: center;
             font-weight: 600;
+            text-overflow: ellipsis;
+            overflow: hidden;
+            white-space: nowrap;
         }
 
         .zone-card.active {
@@ -54,6 +61,7 @@
             justify-content: space-between;
             align-items: center;
             margin-bottom: 15px;
+            gap: 10px;
         }
 
         .zone-card input {
@@ -63,7 +71,8 @@
             border-radius: 6px;
             font-size: 14px;
             transition: border-color 0.3s;
-            margin-right: 10px;
+            min-width: 0;
+            width: 100%;
         }
 
         .zone-card input:focus {
@@ -77,6 +86,7 @@
             display: inline-block;
             width: 60px;
             height: 34px;
+            flex-shrink: 0;
         }
 
         .toggle-switch input {
@@ -191,6 +201,7 @@
             border-radius: 12px;
             box-shadow: inset 0 0 8px rgba(0, 0, 0, 0.05);
             margin: 20px 0;
+            grid-column: 1 / -1;
         }
 
         .empty-state h3 {
@@ -202,6 +213,45 @@
         .empty-state p {
             color: #888;
             margin-bottom: 20px;
+        }
+
+        /* Responsive improvements */
+        @media (max-width: 600px) {
+            .container {
+                grid-template-columns: 1fr;
+                gap: 15px;
+                padding: 10px;
+            }
+            
+            .zone-card {
+                padding: 15px;
+            }
+            
+            .input-container {
+                margin-bottom: 10px;
+            }
+            
+            .toggle-switch {
+                width: 50px;
+                height: 28px;
+            }
+            
+            .slider:before {
+                height: 20px;
+                width: 20px;
+                left: 4px;
+                bottom: 4px;
+            }
+            
+            input:checked + .slider:before {
+                transform: translateX(22px);
+            }
+        }
+        
+        @media (min-width: 601px) and (max-width: 900px) {
+            .container {
+                grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+            }
         }
     </style>
 </head>
@@ -217,10 +267,5 @@
             </div>
         </div>
     </main>
-
-    <script>
-        // Questo script verrà sostituito da manual.js quando viene caricato
-        // Mostrato qui solo per presentazione
-    </script>
 </body>
 </html>
