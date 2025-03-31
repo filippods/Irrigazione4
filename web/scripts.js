@@ -1,8 +1,10 @@
-// scripts.js
+// scripts.js - Script principale dell'applicazione
 
+// Variabili globali
 let isLoadingPage = false;
 let userData = {};
 let connectionStatusInterval = null;
+let currentPage = null;
 
 // Funzione per mostrare notifiche (toast)
 function showToast(message, type = 'info', duration = 3000) {
@@ -20,7 +22,24 @@ function showToast(message, type = 'info', duration = 3000) {
     // Crea un nuovo toast
     const toast = document.createElement('div');
     toast.className = `toast ${type}`;
-    toast.textContent = message;
+    
+    // Aggiungi icona basata sul tipo
+    let iconHtml = '';
+    switch(type) {
+        case 'success':
+            iconHtml = '<i class="fas success-icon"></i>';
+            break;
+        case 'error':
+            iconHtml = '<i class="fas error-icon"></i>';
+            break;
+        case 'warning':
+            iconHtml = '<i class="fas warning-icon"></i>';
+            break;
+        default:
+            iconHtml = '<i class="fas info-icon"></i>';
+    }
+    
+    toast.innerHTML = `${iconHtml}<span>${message}</span>`;
     
     // Aggiungi al container
     container.appendChild(toast);
@@ -53,9 +72,6 @@ function showToast(message, type = 'info', duration = 3000) {
             }
         }, 300);
     });
-    
-    // Esponi la funzione globalmente
-    window.showToast = showToast;
 }
 
 // Funzione per caricare i dati da user_settings.json una sola volta
@@ -68,7 +84,7 @@ function loadUserData(callback) {
         .then(data => {
             userData = data;
             console.log("Dati utente caricati:", userData);
-            if (callback) callback();
+            if (callback) callback(userData);
         })
         .catch(error => {
             console.error('Errore nel caricamento dei dati di user_settings:', error);
@@ -76,17 +92,32 @@ function loadUserData(callback) {
         });
 }
 
-function loadPage(page, callback) {
+// Funzione per caricare e visualizzare una pagina
+function loadPage(pageName, callback) {
     if (isLoadingPage) return;
     isLoadingPage = true;
+    
+    // Segna la pagina corrente nel menu
+    updateActiveMenuItem(pageName);
+    
+    // Memorizza la pagina corrente
+    currentPage = pageName;
+    
+    // Chiudi il menu dopo la selezione (su dispositivi mobili)
+    closeMenu();
+    
+    // Mostra un indicatore di caricamento
+    const contentElement = document.getElementById('content');
+    if (contentElement) {
+        contentElement.innerHTML = '<div class="loading-indicator" style="text-align:center;padding:50px;">Caricamento...</div>';
+    }
 
-    fetch(page)
+    fetch(pageName)
         .then(response => {
-            if (!response.ok) throw new Error('Errore nel caricamento della pagina');
+            if (!response.ok) throw new Error(`Errore HTTP: ${response.status}`);
             return response.text();
         })
         .then(html => {
-            const contentElement = document.getElementById('content');
             if (contentElement) {
                 contentElement.innerHTML = html;
 
@@ -94,64 +125,71 @@ function loadPage(page, callback) {
                 stopConnectionStatusPolling();
 
                 // Carica gli script associati alla pagina
-                switch (page) {
-                    case 'manual.html':
-                        loadScript('manual.js', () => {
+                const scriptSrc = pageName.replace('.html', '.js');
+                
+                // Rimuovi eventuali script precedenti della stessa pagina
+                const oldScripts = document.querySelectorAll(`script[src="${scriptSrc}"]`);
+                oldScripts.forEach(script => script.remove());
+                
+                // Carica il nuovo script
+                loadScript(scriptSrc, () => {
+                    // Inizializza la pagina basandosi sul nome del file
+                    switch (pageName) {
+                        case 'manual.html':
                             if (typeof initializeManualPage === 'function') {
                                 initializeManualPage(userData);
                             }
-                        });
-                        break;
-                    case 'create_program.html':
-                        loadScript('create_program.js', () => {
+                            break;
+                        case 'create_program.html':
                             if (typeof initializeCreateProgramPage === 'function') {
                                 initializeCreateProgramPage();
                             }
-                        });
-                        break;
-                    case 'modify_program.html':
-                        loadScript('modify_program.js', () => {
+                            break;
+                        case 'modify_program.html':
                             if (typeof initializeModifyProgramPage === 'function') {
                                 initializeModifyProgramPage();
                             }
-                        });
-                        break;
-                    case 'settings.html':
-                        loadScript('settings.js', () => {
+                            break;
+                        case 'settings.html':
                             if (typeof initializeSettingsPage === 'function') {
                                 initializeSettingsPage(userData);
                             }
                             // Avvia il polling dello stato della connessione solo se sei nella pagina Impostazioni
                             startConnectionStatusPolling();
-                        });
-                        break;
-                    case 'view_programs.html':
-                        loadScript('view_programs.js', () => {
+                            break;
+                        case 'view_programs.html':
                             if (typeof initializeViewProgramsPage === 'function') {
                                 initializeViewProgramsPage();
                             }
-                        });
-                        break;
-                    case 'logs.html':
-                        loadScript('logs.js', () => {
+                            break;
+                        case 'logs.html':
                             if (typeof initializeLogsPage === 'function') {
                                 initializeLogsPage();
                             }
-                        });
-                        break;
-                }
+                            break;
+                    }
 
-                if (callback && typeof callback === 'function') {
-                    callback();
-                }
-            } else {
-                console.error("Elemento con ID 'content' non trovato.");
-                showToast("Errore nell'inizializzazione della pagina", 'error');
+                    if (callback && typeof callback === 'function') {
+                        callback();
+                    }
+                });
             }
         })
         .catch(error => {
             console.error('Errore nel caricamento della pagina:', error);
-            showToast(`Errore nel caricamento di ${page}`, 'error');
+            if (contentElement) {
+                contentElement.innerHTML = `
+                    <div style="text-align:center;padding:30px;color:#ff3333;">
+                        <div style="font-size:48px;margin-bottom:20px;">⚠️</div>
+                        <h2>Errore di caricamento</h2>
+                        <p>Impossibile caricare la pagina ${pageName}</p>
+                        <button onclick="window.location.reload()" class="button primary" style="margin-top:20px;">
+                            Ricarica pagina
+                        </button>
+                    </div>
+                `;
+            }
+            showToast(`Errore nel caricamento di ${pageName}`, 'error');
         })
         .finally(() => {
             isLoadingPage = false;
@@ -163,30 +201,63 @@ function loadScript(url, callback) {
     const script = document.createElement('script');
     script.src = url;
     script.onload = callback;
+    script.onerror = () => {
+        console.error(`Errore nel caricamento dello script: ${url}`);
+        callback();  // Chiamiamo comunque il callback per non bloccare
+    };
     document.head.appendChild(script);
 }
 
+// Funzione per aggiornare l'elemento del menu attivo
+function updateActiveMenuItem(pageName) {
+    const menuItems = document.querySelectorAll('.menu li');
+    menuItems.forEach(item => {
+        const itemPage = item.getAttribute('data-page');
+        if (itemPage === pageName) {
+            item.classList.add('active');
+        } else {
+            item.classList.remove('active');
+        }
+    });
+}
+
+// Funzioni per il menu
 function toggleMenu() {
     const menu = document.getElementById('menu');
+    const overlay = document.getElementById('overlay');
     menu.classList.toggle('active');
+    overlay.classList.toggle('active');
 }
 
 function closeMenu() {
     const menu = document.getElementById('menu');
+    const overlay = document.getElementById('overlay');
     menu.classList.remove('active');
+    overlay.classList.remove('active');
 }
 
+// Funzione per aggiornare data e ora
 function updateDateTime() {
     const dateElement = document.getElementById('date');
     const timeElement = document.getElementById('time');
 
+    if (!dateElement || !timeElement) return;
+
     const now = new Date();
+    
+    // Formatta la data come "giorno mese anno"
     const options = { day: 'numeric', month: 'long', year: 'numeric' };
     const formattedDate = now.toLocaleDateString('it-IT', options);
-    const formattedTime = now.toLocaleTimeString('it-IT');
+    
+    // Formatta l'ora come "ore:minuti:secondi"
+    const formattedTime = now.toLocaleTimeString('it-IT', { 
+        hour: '2-digit', 
+        minute: '2-digit',
+        second: '2-digit'
+    });
 
-    if (dateElement) dateElement.textContent = formattedDate;
-    if (timeElement) timeElement.textContent = formattedTime;
+    dateElement.textContent = formattedDate;
+    timeElement.textContent = formattedTime;
 }
 
 // Funzioni per il polling dello stato della connessione
@@ -224,18 +295,26 @@ function fetchConnectionStatus() {
                 
                 if (data.mode === 'client') {
                     statusHtml = `
-                        <strong>Modalità:</strong> Client WiFi<br>
-                        <strong>SSID:</strong> ${data.ssid}<br>
-                        <strong>IP:</strong> ${data.ip}
+                        <div style="background-color:#e6f7ff;border-radius:8px;padding:15px;margin-top:15px;border:1px solid #91d5ff;">
+                            <h3 style="margin:0 0 10px 0;color:#0099ff;">Connesso alla rete WiFi</h3>
+                            <p><strong>SSID:</strong> ${data.ssid}</p>
+                            <p><strong>IP:</strong> ${data.ip}</p>
+                        </div>
                     `;
                 } else if (data.mode === 'AP') {
                     statusHtml = `
-                        <strong>Modalità:</strong> Access Point<br>
-                        <strong>SSID:</strong> ${data.ssid}<br>
-                        <strong>IP:</strong> ${data.ip}
+                        <div style="background-color:#fff7e6;border-radius:8px;padding:15px;margin-top:15px;border:1px solid #ffd591;">
+                            <h3 style="margin:0 0 10px 0;color:#fa8c16;">Access Point attivo</h3>
+                            <p><strong>SSID:</strong> ${data.ssid}</p>
+                            <p><strong>IP:</strong> ${data.ip}</p>
+                        </div>
                     `;
                 } else {
-                    statusHtml = 'Nessuna connessione attiva';
+                    statusHtml = `
+                        <div style="background-color:#fff1f0;border-radius:8px;padding:15px;margin-top:15px;border:1px solid #ffa39e;">
+                            <h3 style="margin:0 0 10px 0;color:#f5222d;">Nessuna connessione attiva</h3>
+                        </div>
+                    `;
                 }
                 
                 statusElement.innerHTML = statusHtml;
@@ -244,19 +323,70 @@ function fetchConnectionStatus() {
         })
         .catch(error => {
             console.error('Errore nel caricamento dello stato della connessione:', error);
-            // Non mostrare toast per evitare troppe notifiche
+            // Non mostrare toast per evitare troppi popup
         });
 }
 
-function initializePage() {
-    updateDateTime();
-    setInterval(updateDateTime, 1000);
-
-    loadUserData(() => {
-        loadPage('manual.html');
+// Funzione per fermare tutti i programmi in esecuzione
+function stopAllPrograms() {
+    // Aggiungi classe loading al pulsante
+    const stopBtn = document.querySelector('.stop-all-button');
+    if (stopBtn) {
+        stopBtn.classList.add('loading');
+    }
+    
+    fetch('/stop_program', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (stopBtn) {
+            stopBtn.classList.remove('loading');
+        }
+        
+        if (data.success) {
+            showToast('Arresto totale eseguito con successo', 'success');
+            
+            // Se siamo nella pagina di visualizzazione programmi, aggiorniamola
+            if (currentPage === 'view_programs.html' && typeof fetchProgramState === 'function') {
+                fetchProgramState();
+            }
+            
+            // Se siamo nella pagina manuale, aggiorniamola
+            if (currentPage === 'manual.html' && typeof fetchZonesStatus === 'function') {
+                fetchZonesStatus();
+            }
+        } else {
+            showToast(`Errore durante l'arresto totale: ${data.error || 'Errore sconosciuto'}`, 'error');
+        }
+    })
+    .catch(error => {
+        if (stopBtn) {
+            stopBtn.classList.remove('loading');
+        }
+        console.error('Errore di rete durante l\'arresto totale:', error);
+        showToast('Errore di rete durante l\'arresto totale', 'error');
     });
 }
 
+// Funzione per l'inizializzazione della pagina
+function initializePage() {
+    // Aggiorna data e ora
+    updateDateTime();
+    setInterval(updateDateTime, 1000);
+
+    // Carica i dati utente e dopo carica la pagina predefinita
+    loadUserData(() => {
+        // Carica la pagina predefinita (controllo manuale)
+        loadPage('manual.html');
+    });
+    
+    // Esponi funzioni globali
+    window.showToast = showToast;
+}
+
+// Inizializzazione quando il DOM è completamente caricato
 document.addEventListener('DOMContentLoaded', () => {
     // Inizializza la pagina principale
     initializePage();
@@ -264,40 +394,23 @@ document.addEventListener('DOMContentLoaded', () => {
     // Gestisci i click sui link di navigazione
     document.querySelectorAll('.menu li').forEach(item => {
         item.addEventListener('click', (event) => {
-            const targetPage = event.target.dataset.page;
-            loadPage(targetPage);
-            closeMenu();
+            const targetPage = event.currentTarget.getAttribute('data-page');
+            if (targetPage) {
+                loadPage(targetPage);
+            }
         });
     });
 
-    // Aggiungi listener per chiudere il menu quando si clicca altrove
-    document.body.addEventListener('click', (e) => {
-        const menu = document.getElementById('menu');
-        const menuIcon = document.querySelector('.menu-icon');
-
-        // Chiudi il menu solo se è attivo e il clic non è sul menu o sull'icona del menu
-        if (menu && menu.classList.contains('active') && !menu.contains(e.target) && !menuIcon.contains(e.target)) {
-            closeMenu();
+    // Previeni il trascinamento delle immagini
+    document.addEventListener('dragstart', (e) => {
+        if (e.target.tagName === 'IMG') {
+            e.preventDefault();
         }
     });
 });
 
-// Funzione per fermare tutti i programmi in esecuzione
-function stopAllPrograms() {
-    fetch('/stop_program', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' }
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            showToast('Arresto totale eseguito con successo', 'success');
-        } else {
-            showToast(`Errore durante l'arresto totale: ${data.error}`, 'error');
-        }
-    })
-    .catch(error => {
-        console.error('Errore di rete durante l\'arresto totale:', error);
-        showToast('Errore di rete durante l\'arresto totale', 'error');
-    });
-}
+// Gestione errori globali
+window.addEventListener('error', (event) => {
+    console.error('Errore JavaScript:', event.error);
+    showToast('Si è verificato un errore. Controlla la console del browser.', 'error');
+});

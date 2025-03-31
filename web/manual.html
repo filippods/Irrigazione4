@@ -2,51 +2,51 @@
 <html lang="it">
 <head>
     <style>
-        body {
-            background: linear-gradient(135deg, #f0f0f0 25%, #e0e0e0 100%);
-            margin: 0;
-            font-family: 'Poppins', sans-serif;
-            color: #333;
-            display: flex;
-            justify-content: center;
-            align-items: flex-start;
-            padding-top: 15px;
-        }
-
         .container {
-            display: flex;
-            flex-wrap: wrap;
-            justify-content: center;
-            padding: 15px;
-            gap: 15px;
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 20px;
+            padding: 10px;
         }
 
         .zone-card {
-            border: 2px solid transparent;
-            border-radius: 12px;
-            margin: 10px;
-            padding: 15px;
-            width: 220px;
-            text-align: center;
             background: #ffffff;
-            background: linear-gradient(135deg, #fff, #f9f9f9);
-            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1), 0 2px 4px rgba(0, 0, 0, 0.08);
-            transition: transform 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
-            position: relative;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+            padding: 20px;
+            transition: all 0.3s ease;
+            display: flex;
+            flex-direction: column;
         }
 
         .zone-card:hover {
-            background-color: #f1f1f1;
-            box-shadow: 0 8px 20px rgba(0, 136, 255, 0.2), 0 6px 12px rgba(255, 0, 150, 0.2);
             transform: translateY(-5px);
+            box-shadow: 0 6px 16px rgba(0, 0, 0, 0.12);
         }
 
         .zone-card h3 {
-            margin-bottom: 15px;
-            color: #222;
-            font-size: 1.25rem;
-            word-wrap: break-word;
-            max-width: 100%;
+            margin: 0 0 15px 0;
+            font-size: 18px;
+            color: #333;
+            text-align: center;
+            font-weight: 600;
+        }
+
+        .zone-card.active {
+            border: 2px solid #00cc66;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% {
+                box-shadow: 0 0 0 0 rgba(0, 204, 102, 0.4);
+            }
+            70% {
+                box-shadow: 0 0 0 10px rgba(0, 204, 102, 0);
+            }
+            100% {
+                box-shadow: 0 0 0 0 rgba(0, 204, 102, 0);
+            }
         }
 
         .input-container {
@@ -57,37 +57,33 @@
         }
 
         .zone-card input {
-            width: 40%;
-            padding: 8px;
-            border: 1px solid #ddd;
-            border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-            transition: border-color 0.3s ease;
+            flex: 1;
+            padding: 10px;
+            border: 1px solid #e0e0e0;
+            border-radius: 6px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+            margin-right: 10px;
         }
 
         .zone-card input:focus {
-            border-color: rgba(0, 136, 255, 0.8);
-        }
-
-        .zone-card input::placeholder {
-            color: #888;
+            border-color: #0099ff;
+            outline: none;
+            box-shadow: 0 0 0 2px rgba(0, 153, 255, 0.2);
         }
 
         .toggle-switch {
-            margin-left: 15px;
-        }
-
-        .switch {
             position: relative;
             display: inline-block;
-            width: 70px;
+            width: 60px;
             height: 34px;
         }
 
-        .switch input {
+        .toggle-switch input {
             opacity: 0;
             width: 0;
             height: 0;
+            margin: 0;
         }
 
         .slider {
@@ -98,7 +94,7 @@
             right: 0;
             bottom: 0;
             background-color: #ccc;
-            transition: 0.4s;
+            transition: .4s;
             border-radius: 34px;
         }
 
@@ -110,7 +106,7 @@
             left: 4px;
             bottom: 4px;
             background-color: white;
-            transition: 0.4s;
+            transition: .4s;
             border-radius: 50%;
         }
 
@@ -118,114 +114,113 @@
             background-color: #00cc66;
         }
 
-        input:checked + .slider:before {
-            transform: translateX(36px);
+        input:focus + .slider {
+            box-shadow: 0 0 1px #00cc66;
         }
 
-        /* Progress bar sopra i pulsanti */
-        .progress-wrapper {
+        input:checked + .slider:before {
+            transform: translateX(26px);
+        }
+
+        input:disabled + .slider {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .progress-container {
+            margin-top: 10px;
             position: relative;
-            width: 100%;
-            margin-bottom: 20px;
+            height: 40px;
         }
 
         progress {
             width: 100%;
-            height: 25px;
-            border-radius: 12px;
-            background-color: white;
-            box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.1);
+            height: 20px;
+            -webkit-appearance: none;
+            appearance: none;
+            border: none;
+            border-radius: 10px;
+            background: #f0f0f0;
+            overflow: hidden;
         }
 
         progress::-webkit-progress-bar {
-            background-color: white;
-            border-radius: 12px;
-            box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.1);
+            background: #f0f0f0;
+            border-radius: 10px;
         }
 
         progress::-webkit-progress-value {
-            background-color: #0099ff;
-            border-radius: 12px;
-            box-shadow: 0 2px 4px rgba(0, 136, 255, 0.4);
+            background: linear-gradient(90deg, #0099ff, #00cc66);
+            border-radius: 10px;
+            transition: width 0.3s ease;
         }
 
         progress::-moz-progress-bar {
-            background-color: #0099ff;
-            border-radius: 12px;
-            box-shadow: 0 2px 4px rgba(0, 0, 136, 0.4);
+            background: linear-gradient(90deg, #0099ff, #00cc66);
+            border-radius: 10px;
+            transition: width 0.3s ease;
         }
 
-        .progress-timer {
+        .timer-display {
             position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            padding: 4px 8px;
-            background-color: white;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .page-title {
+            margin: 0 0 20px 0;
+            font-size: 24px;
+            font-weight: 600;
+            color: #333;
+            border-bottom: 2px solid #0099ff;
+            padding-bottom: 10px;
+        }
+
+        .empty-state {
+            padding: 40px;
+            text-align: center;
+            background-color: #f9f9f9;
             border-radius: 12px;
-            color: #0099ff;
-            font-size: 1rem;
-            font-weight: bold;
-            pointer-events: none;
+            box-shadow: inset 0 0 8px rgba(0, 0, 0, 0.05);
+            margin: 20px 0;
         }
-        
-        /* Pulsante di caricamento */
-        .loading {
-            position: relative;
-            color: transparent !important;
-            pointer-events: none;
+
+        .empty-state h3 {
+            margin: 10px 0;
+            font-size: 18px;
+            color: #666;
         }
-        
-        .loading::after {
-            content: "";
-            position: absolute;
-            width: 16px;
-            height: 16px;
-            top: 50%;
-            left: 50%;
-            margin-top: -8px;
-            margin-left: -8px;
-            border-radius: 50%;
-            border: 2px solid rgba(255, 255, 255, 0.25);
-            border-top-color: #ffffff;
-            animation: button-loading-spinner 1s linear infinite;
-        }
-        
-        @keyframes button-loading-spinner {
-            from {
-                transform: rotate(0turn);
-            }
-            to {
-                transform: rotate(1turn);
-            }
-        }
-        
-        /* Stilizzazione nel caso di zona attiva */
-        .zone-card.active {
-            border-color: #00cc66;
-            animation: active-zone-pulse 2s infinite;
-        }
-        
-        @keyframes active-zone-pulse {
-            0% {
-                box-shadow: 0 0 0 0 rgba(0, 204, 102, 0.4);
-            }
-            70% {
-                box-shadow: 0 0 0 10px rgba(0, 204, 102, 0);
-            }
-            100% {
-                box-shadow: 0 0 0 0 rgba(0, 204, 102, 0);
-            }
+
+        .empty-state p {
+            color: #888;
+            margin-bottom: 20px;
         }
     </style>
 </head>
 <body>
     <main>
+        <h1 class="page-title">Controllo Manuale</h1>
+        
         <div class="container" id="zone-container">
             <!-- Le card per le zone verranno generate dinamicamente tramite JavaScript -->
+            <div class="empty-state">
+                <h3>Caricamento zone...</h3>
+                <p>Attendere mentre vengono recuperate le informazioni sulle zone.</p>
+            </div>
         </div>
     </main>
 
-    <script src="manual.js"></script>
+    <script>
+        // Questo script verrà sostituito da manual.js quando viene caricato
+        // Mostrato qui solo per presentazione
+    </script>
 </body>
 </html>

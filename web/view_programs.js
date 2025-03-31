@@ -1,31 +1,54 @@
-// Variabile per il polling dello stato dei programmi
-let programStatusInterval = null;
+// view_programs.js - Script per la pagina di visualizzazione programmi
 
+// Variabili globali
+let programStatusInterval = null;
+let userSettings = {};
+let zoneNameMap = {};
+let programsData = {};
+
+// Inizializza la pagina
 function initializeViewProgramsPage() {
+    console.log("Inizializzazione pagina visualizzazione programmi");
+    
+    // Carica i dati e mostra i programmi
     loadUserSettingsAndPrograms();
     
-    // Avvia polling dello stato dei programmi
+    // Avvia il polling dello stato dei programmi
     startProgramStatusPolling();
     
-    // Pulisci quando l'utente lascia la pagina
-    window.addEventListener('beforeunload', stopProgramStatusPolling);
+    // Imposta handlers per la pulizia quando l'utente lascia la pagina
+    window.addEventListener('pagehide', cleanupViewProgramsPage);
+    
+    // Esponi la funzione di aggiornamento stato programma globalmente
+    // (usato da altre pagine come scripts.js per aggiornare lo stato quando viene eseguito un arresto totale)
+    window.fetchProgramState = fetchProgramState;
 }
 
+// Avvia il polling dello stato dei programmi
 function startProgramStatusPolling() {
-    // Prima chiamata immediata
+    // Esegui subito
     fetchProgramState();
     
-    // Poi ogni 3 secondi
+    // Imposta l'intervallo a 3 secondi
     programStatusInterval = setInterval(fetchProgramState, 3000);
+    console.log("Polling dello stato dei programmi avviato");
 }
 
+// Ferma il polling dello stato dei programmi
 function stopProgramStatusPolling() {
     if (programStatusInterval) {
         clearInterval(programStatusInterval);
         programStatusInterval = null;
+        console.log("Polling dello stato dei programmi fermato");
     }
 }
 
+// Pulisci le risorse quando l'utente lascia la pagina
+function cleanupViewProgramsPage() {
+    stopProgramStatusPolling();
+}
+
+// Ottiene lo stato del programma corrente
 function fetchProgramState() {
     fetch('/get_program_state')
         .then(response => {
@@ -40,6 +63,7 @@ function fetchProgramState() {
         });
 }
 
+// Aggiorna l'interfaccia in base allo stato del programma
 function updateProgramsUI(state) {
     const currentProgramId = state.current_program_id;
     const programRunning = state.program_running;
@@ -55,10 +79,13 @@ function updateProgramsUI(state) {
             
             // Aggiungi indicatore se non esiste
             if (!card.querySelector('.active-indicator')) {
-                const indicator = document.createElement('div');
-                indicator.className = 'active-indicator';
-                indicator.textContent = 'Programma in esecuzione';
-                card.querySelector('h3').insertAdjacentElement('afterend', indicator);
+                const programHeader = card.querySelector('.program-header');
+                if (programHeader) {
+                    const indicator = document.createElement('div');
+                    indicator.className = 'active-indicator';
+                    indicator.textContent = 'In esecuzione';
+                    programHeader.appendChild(indicator);
+                }
             }
         } else {
             card.classList.remove('active-program');
@@ -71,246 +98,319 @@ function updateProgramsUI(state) {
         }
         
         // Aggiorna pulsanti
-        const onBtn = card.querySelector('.on-btn');
-        const offBtn = card.querySelector('.off-btn');
+        const startBtn = card.querySelector('.btn-start');
+        const stopBtn = card.querySelector('.btn-stop');
         
-        if (onBtn && offBtn) {
+        if (startBtn && stopBtn) {
             if (isActive) {
-                onBtn.classList.add('active');
-                onBtn.classList.remove('inactive');
-                offBtn.classList.add('inactive');
-                offBtn.classList.remove('active');
+                // Questo programma è attivo
+                startBtn.classList.add('disabled');
+                startBtn.disabled = true;
+                stopBtn.classList.remove('disabled');
+                stopBtn.disabled = false;
+            } else if (programRunning) {
+                // Un altro programma è attivo
+                startBtn.classList.add('disabled');
+                startBtn.disabled = true;
+                stopBtn.classList.add('disabled');
+                stopBtn.disabled = true;
             } else {
-                onBtn.classList.remove('active');
-                onBtn.classList.add('inactive');
-                offBtn.classList.remove('inactive');
-                offBtn.classList.add('active');
-            }
-            
-            // Disabilita tutti i pulsanti ON se c'è un programma in esecuzione ma non è questo
-            if (programRunning && !isActive) {
-                onBtn.disabled = true;
-                onBtn.title = 'Non puoi avviare un programma mentre un altro è in esecuzione';
-            } else {
-                onBtn.disabled = false;
-                onBtn.title = '';
+                // Nessun programma è attivo
+                startBtn.classList.remove('disabled');
+                startBtn.disabled = false;
+                stopBtn.classList.add('disabled');
+                stopBtn.disabled = true;
             }
         }
     });
 }
 
+// Carica le impostazioni utente e i programmi
 function loadUserSettingsAndPrograms() {
-    showLoading();
+    // Mostra l'indicatore di caricamento
+    const programsContainer = document.getElementById('programs-container');
+    if (programsContainer) {
+        programsContainer.innerHTML = '<div class="loading">Caricamento programmi...</div>';
+    }
     
-    // Carica le impostazioni utente per ottenere i nomi delle zone
+    // Prima carica le impostazioni utente (per ottenere i nomi delle zone)
     fetch('/data/user_settings.json')
         .then(response => {
             if (!response.ok) throw new Error('Errore nel caricamento delle impostazioni utente');
             return response.json();
         })
-        .then(userSettings => {
-            const zones = userSettings.zones;
-
-            // Carica anche i programmi
-            return fetch('/data/program.json')
-                .then(response => {
-                    if (!response.ok) throw new Error('Errore nel caricamento dei programmi');
-                    return response.json();
-                })
-                .then(programs => fetch('/get_program_state')
-                    .then(response => {
-                        if (!response.ok) throw new Error('Errore nel caricamento dello stato del programma');
-                        return response.json();
-                    })
-                    .then(state => ({ programs, state, zones }))
-                );
+        .then(settings => {
+            userSettings = settings;
+            
+            // Crea una mappa di ID zona -> nome zona
+            zoneNameMap = {};
+            settings.zones.forEach(zone => {
+                zoneNameMap[zone.id] = zone.name;
+            });
+            
+            // Aggiorna lo stato dei programmi automatici
+            updateAutoProgramsStatus(settings.automatic_programs_enabled || false);
+            
+            // Poi carica i programmi
+            return fetch('/data/program.json');
         })
-        .then(({ programs, state, zones }) => {
-            renderProgramCards(programs, state.current_program_id, zones);
-            hideLoading();
+        .then(response => {
+            if (!response.ok) throw new Error('Errore nel caricamento dei programmi');
+            return response.json();
+        })
+        .then(programs => {
+            // Salva i programmi per riferimento futuro
+            programsData = programs;
+            
+            // Poi ottieni lo stato del programma corrente
+            return fetch('/get_program_state');
+        })
+        .then(response => {
+            if (!response.ok) throw new Error('Errore nel caricamento dello stato del programma');
+            return response.json();
+        })
+        .then(state => {
+            // Ora che abbiamo tutti i dati necessari, possiamo renderizzare i programmi
+            renderProgramCards(programsData, state);
         })
         .catch(error => {
             console.error('Errore nel caricamento dei dati:', error);
             showToast('Errore nel caricamento dei dati', 'error');
-            hideLoading();
+            
+            // Mostra un messaggio di errore
+            if (programsContainer) {
+                programsContainer.innerHTML = `
+                    <div class="empty-state">
+                        <h3>Errore nel caricamento dei programmi</h3>
+                        <p>${error.message}</p>
+                        <button class="btn" onclick="loadUserSettingsAndPrograms()">Riprova</button>
+                    </div>
+                `;
+            }
         });
 }
 
-function showLoading() {
-    const container = document.getElementById('program-container');
-    if (container) {
-        container.innerHTML = '<div class="loading">Caricamento programmi...</div>';
+// Aggiorna lo stato dei programmi automatici nella UI
+function updateAutoProgramsStatus(enabled) {
+    const statusEl = document.getElementById('auto-status');
+    if (statusEl) {
+        if (enabled) {
+            statusEl.className = 'auto-status on';
+            statusEl.querySelector('span').textContent = 'Programmi automatici attivi';
+        } else {
+            statusEl.className = 'auto-status off';
+            statusEl.querySelector('span').textContent = 'Programmi automatici disattivati';
+        }
     }
 }
 
-function hideLoading() {
-    const loading = document.querySelector('.loading');
-    if (loading) {
-        loading.remove();
-    }
-}
-
-function renderProgramCards(programs, currentProgramId, zones) {
-    const container = document.getElementById('program-container');
-    if (!container) {
-        console.error("Elemento 'program-container' non trovato nel DOM.");
-        return;
-    }
-
-    if (Object.keys(programs).length === 0) {
+// Renderizza le card dei programmi
+function renderProgramCards(programs, state) {
+    const container = document.getElementById('programs-container');
+    if (!container) return;
+    
+    const programIds = Object.keys(programs);
+    
+    if (programIds.length === 0) {
+        // Nessun programma trovato
         container.innerHTML = `
-            <div class="no-program-message" style="text-align:center;padding:20px;color:#666">
-                Nessun programma in memoria.
-                <br><br>
-                <button onclick="window.location.href='create_program.html'" class="on-btn" style="background-color:#0099ff">Crea Nuovo Programma</button>
+            <div class="empty-state">
+                <h3>Nessun programma configurato</h3>
+                <p>Crea il tuo primo programma di irrigazione per iniziare a usare il sistema.</p>
+                <button class="btn" onclick="loadPage('create_program.html')">Crea Programma</button>
             </div>
         `;
         return;
     }
-
+    
     container.innerHTML = '';
     
-    // Recupera lo stato di attivazione automatica
-    fetch('/data/user_settings.json')
-        .then(response => response.json())
-        .then(settings => {
-            const autoEnabled = settings.automatic_programs_enabled || false;
-            
-            // Ora renderizza i programmi con lo stato corretto
-            Object.entries(programs).forEach(([programId, program]) => {
-                if (!program.id) {
-                    program.id = programId;
-                }
-
-                const isActive = program.id === currentProgramId;
-
-                const zoneNames = (program.steps || []).map(step => {
-                    const zone = zones.find(z => z.id === step.zone_id);
-                    const zoneName = zone ? zone.name : `Zona ${step.zone_id}`;
-                    return `<li class="active-zone">${zoneName} (${step.duration} min)</li>`;
-                }).join('');
-
-                const months = ['Gennaio', 'Febbraio', 'Marzo', 'Aprile', 'Maggio', 'Giugno', 'Luglio', 'Agosto', 'Settembre', 'Ottobre', 'Novembre', 'Dicembre'];
-                const monthDisplay = months.map(month => {
-                    const isActiveMonth = (program.months || []).includes(month);
-                    return `<li class="${isActiveMonth ? 'active-zone' : 'inactive-zone'}">${month}</li>`;
-                }).join('');
-
-                const lastRunDate = program.last_run_date || 'Mai eseguito';
-                const recurrence = program.recurrence === 'giornaliero' ? 'Ogni giorno' : 
-                                program.recurrence === 'giorni_alterni' ? 'Giorni alterni' : 
-                                program.recurrence === 'personalizzata' ? `Ogni ${program.interval_days || 1} giorni` : 
-                                program.recurrence;
-
-                const programCard = document.createElement('div');
-                programCard.className = `program-card ${isActive ? 'active-program' : ''}`;
-                programCard.setAttribute('data-program-id', program.id);
-                programCard.innerHTML = `
-                    <h3 style="background: #0099ff; color: white; padding: 10px; border-radius: 8px;">${program.name}</h3>
-                    ${isActive ? '<div class="active-indicator">Programma in esecuzione</div>' : ''}
-                    <div class="section">
-                        <div class="section-title">Orario di Attivazione:</div>
-                        <div class="section-content">${program.activation_time || '00:00'}</div>
-                    </div>
-                    <div class="section">
-                        <div class="section-title">Cadenza:</div>
-                        <div class="section-content">${recurrence}</div>
-                    </div>
-                    <div class="section">
-                        <div class="section-title">Ultima Data di Avvio:</div>
-                        <div class="section-content">${lastRunDate}</div>
-                    </div>
-                    <div class="section">
-                        <div class="section-title">Mesi Attivi</div>
-                        <ul class="months-list">
-                            ${monthDisplay}
-                        </ul>
-                    </div>
-                    <div class="section">
-                        <div class="section-title">Zone</div>
-                        <ul class="zone-list">
-                            ${zoneNames}
-                        </ul>
-                    </div>
-                    <div class="btn-group">
-                        <div class="on-off-group">
-                            <button class="on-btn ${isActive ? 'active' : 'inactive'}" onclick="startProgram('${program.id}')">Avvia ora</button>
-                            <button class="off-btn ${isActive ? 'inactive' : 'active'}" onclick="stopProgram()">STOP</button>
-                        </div>
-                        <div class="auto-group">
-                            <button class="auto-enable ${autoEnabled ? 'active' : ''}" onclick="toggleAutomaticPrograms(true)">Auto ON</button>
-                            <button class="auto-disable ${!autoEnabled ? 'active' : ''}" onclick="toggleAutomaticPrograms(false)">Auto OFF</button>
-                        </div>
-                        <div class="edit-delete-group">
-                            <button class="edit-btn" onclick="editProgram('${program.id}')">Modifica</button>
-                            <button class="delete-btn" onclick="deleteProgram('${program.id}')">Elimina</button>
+    // Per ogni programma, crea una card
+    programIds.forEach(programId => {
+        const program = programs[programId];
+        const isActive = state.program_running && state.current_program_id === programId;
+        
+        // Costruisci la visualizzazione dei mesi
+        const monthsHtml = buildMonthsGrid(program.months || []);
+        
+        // Costruisci la visualizzazione delle zone
+        const zonesHtml = buildZonesGrid(program.steps || []);
+        
+        // Card del programma
+        const programCard = document.createElement('div');
+        programCard.className = `program-card ${isActive ? 'active-program' : ''}`;
+        programCard.setAttribute('data-program-id', programId);
+        
+        programCard.innerHTML = `
+            <div class="program-header">
+                <h3>${program.name || 'Programma senza nome'}</h3>
+                ${isActive ? '<div class="active-indicator">In esecuzione</div>' : ''}
+            </div>
+            <div class="program-content">
+                <div class="info-row">
+                    <div class="info-label">Orario:</div>
+                    <div class="info-value">${program.activation_time || 'Non impostato'}</div>
+                </div>
+                <div class="info-row">
+                    <div class="info-label">Cadenza:</div>
+                    <div class="info-value">${formatRecurrence(program.recurrence, program.interval_days)}</div>
+                </div>
+                <div class="info-row">
+                    <div class="info-label">Ultima esecuzione:</div>
+                    <div class="info-value">${program.last_run_date || 'Mai eseguito'}</div>
+                </div>
+                <div class="info-row">
+                    <div class="info-label">Mesi attivi:</div>
+                    <div class="info-value">
+                        <div class="months-grid">
+                            ${monthsHtml}
                         </div>
                     </div>
-                `;
-                container.appendChild(programCard);
-            });
-        });
+                </div>
+                <div class="info-row">
+                    <div class="info-label">Zone:</div>
+                    <div class="info-value">
+                        <div class="zones-grid">
+                            ${zonesHtml}
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="program-actions">
+                <div class="action-row">
+                    <button class="btn btn-start ${isActive ? 'disabled' : ''}" 
+                            onclick="startProgram('${programId}')" 
+                            ${isActive ? 'disabled' : ''}>
+                        <span class="btn-icon">▶</span> Avvia ora
+                    </button>
+                    <button class="btn btn-stop ${!isActive ? 'disabled' : ''}" 
+                            onclick="stopProgram()" 
+                            ${!isActive ? 'disabled' : ''}>
+                        <span class="btn-icon">■</span> Stop
+                    </button>
+                </div>
+                <div class="action-row">
+                    <button class="btn btn-edit" onclick="editProgram('${programId}')">
+                        <span class="btn-icon">✎</span> Modifica
+                    </button>
+                    <button class="btn btn-delete" onclick="deleteProgram('${programId}')">
+                        <span class="btn-icon">🗑</span> Elimina
+                    </button>
+                </div>
+            </div>
+            <div class="auto-control">
+                <div class="auto-switch">
+                    <button class="auto-btn on ${userSettings.automatic_programs_enabled ? 'active' : ''}" 
+                            onclick="toggleAutomaticPrograms(true)">
+                        Auto ON
+                    </button>
+                    <button class="auto-btn off ${!userSettings.automatic_programs_enabled ? 'active' : ''}" 
+                            onclick="toggleAutomaticPrograms(false)">
+                        Auto OFF
+                    </button>
+                </div>
+            </div>
+        `;
+        
+        container.appendChild(programCard);
+    });
 }
 
-function toggleAutomaticPrograms(enable) {
-    showToast(`${enable ? 'Attivazione' : 'Disattivazione'} programmi automatici...`, 'info');
+// Formatta la cadenza per la visualizzazione
+function formatRecurrence(recurrence, interval_days) {
+    if (!recurrence) return 'Non impostata';
     
-    fetch('/toggle_automatic_programs', {
+    switch (recurrence) {
+        case 'giornaliero':
+            return 'Ogni giorno';
+        case 'giorni_alterni':
+            return 'Giorni alterni';
+        case 'personalizzata':
+            return `Ogni ${interval_days || 1} giorn${interval_days === 1 ? 'o' : 'i'}`;
+        default:
+            return recurrence;
+    }
+}
+
+// Costruisce la griglia dei mesi
+function buildMonthsGrid(activeMonths) {
+    const months = [
+        'Gennaio', 'Febbraio', 'Marzo', 'Aprile', 
+        'Maggio', 'Giugno', 'Luglio', 'Agosto', 
+        'Settembre', 'Ottobre', 'Novembre', 'Dicembre'
+    ];
+    
+    const activeMonthsSet = new Set(activeMonths);
+    
+    return months.map(month => {
+        const isActive = activeMonthsSet.has(month);
+        return `
+            <div class="month-tag ${isActive ? 'active' : 'inactive'}">
+                ${month.substring(0, 3)}
+            </div>
+        `;
+    }).join('');
+}
+
+// Costruisce la griglia delle zone
+function buildZonesGrid(steps) {
+    if (!steps || steps.length === 0) {
+        return '<div class="zone-tag" style="grid-column: 1/-1; text-align: center;">Nessuna zona configurata</div>';
+    }
+    
+    return steps.map(step => {
+        const zoneName = zoneNameMap[step.zone_id] || `Zona ${step.zone_id + 1}`;
+        return `
+            <div class="zone-tag">
+                ${zoneName}
+                <span class="duration">${step.duration} min</span>
+            </div>
+        `;
+    }).join('');
+}
+
+// Funzione per avviare un programma
+function startProgram(programId) {
+    const startBtn = document.querySelector(`.program-card[data-program-id="${programId}"] .btn-start`);
+    if (startBtn) {
+        startBtn.classList.add('disabled');
+        startBtn.disabled = true;
+    }
+    
+    fetch('/start_program', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ enable: enable })
+        body: JSON.stringify({ program_id: programId })
     })
     .then(response => response.json())
     .then(data => {
         if (data.success) {
-            showToast(`Programmi automatici ${enable ? 'attivati' : 'disattivati'} con successo`, 'success');
-            
-            // Aggiorna lo stato dei pulsanti
-            document.querySelectorAll('.auto-enable').forEach(btn => {
-                btn.classList.toggle('active', enable);
-            });
-            
-            document.querySelectorAll('.auto-disable').forEach(btn => {
-                btn.classList.toggle('active', !enable);
-            });
-        } else {
-            showToast(`Errore: ${data.error || 'Errore sconosciuto'}`, 'error');
-        }
-    })
-    .catch(error => {
-        console.error('Errore durante la modifica dello stato dei programmi automatici:', error);
-        showToast('Errore di rete', 'error');
-    });
-}
-
-// Altre funzioni aggiornate
-async function startProgram(programId) {
-    showToast('Avvio programma in corso...', 'info');
-    
-    try {
-        const response = await fetch('/start_program', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ program_id: programId })
-        });
-        
-        const data = await response.json();
-
-        if (!data.success) {
-            showToast(`Errore nell'avvio del programma: ${data.error || 'Errore sconosciuto'}`, 'error');
-        } else {
             showToast('Programma avviato con successo', 'success');
             // Aggiorna immediatamente l'interfaccia
             fetchProgramState();
+        } else {
+            showToast(`Errore nell'avvio del programma: ${data.error || 'Errore sconosciuto'}`, 'error');
         }
-    } catch (error) {
-        console.error("Errore di rete durante l'avvio del programma:", error);
+    })
+    .catch(error => {
+        console.error("Errore durante l'avvio del programma:", error);
         showToast("Errore di rete durante l'avvio del programma", 'error');
-    }
+    })
+    .finally(() => {
+        if (startBtn) {
+            startBtn.classList.remove('disabled');
+            startBtn.disabled = false;
+        }
+    });
 }
 
+// Funzione per arrestare un programma
 function stopProgram() {
-    showToast('Arresto programma in corso...', 'info');
+    const stopBtns = document.querySelectorAll('.btn-stop');
+    stopBtns.forEach(btn => {
+        btn.classList.add('disabled');
+        btn.disabled = true;
+    });
     
     fetch('/stop_program', {
         method: 'POST',
@@ -318,58 +418,100 @@ function stopProgram() {
     })
     .then(response => response.json())
     .then(data => {
-        if (!data.success) {
-            showToast(`Errore nell'arresto del programma: ${data.error || 'Errore sconosciuto'}`, 'error');
-        } else {
+        if (data.success) {
             showToast('Programma arrestato con successo', 'success');
             // Aggiorna immediatamente l'interfaccia
             fetchProgramState();
+        } else {
+            showToast(`Errore nell'arresto del programma: ${data.error || 'Errore sconosciuto'}`, 'error');
         }
     })
     .catch(error => {
-        console.error("Errore di rete durante l'arresto del programma:", error);
+        console.error("Errore durante l'arresto del programma:", error);
         showToast("Errore di rete durante l'arresto del programma", 'error');
+    })
+    .finally(() => {
+        stopBtns.forEach(btn => {
+            btn.classList.remove('disabled');
+            btn.disabled = false;
+        });
     });
 }
 
-function deleteProgram(programId) {
-    if (confirm(`Sei sicuro di voler eliminare il programma? Questa operazione non può essere annullata.`)) {
-        showToast('Eliminazione in corso...', 'info');
-        
-        fetch('/delete_program', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ id: programId })
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                showToast('Programma eliminato con successo', 'success');
-                loadUserSettingsAndPrograms();
-            } else {
-                showToast(`Errore nell'eliminazione del programma: ${data.error || 'Errore sconosciuto'}`, 'error');
-            }
-        })
-        .catch(error => {
-            console.error('Errore di rete durante l\'eliminazione del programma:', error);
-            showToast('Errore di rete durante l\'eliminazione del programma', 'error');
-        });
-    }
-}
-
+// Funzione per modificare un programma
 function editProgram(programId) {
+    // Salva l'ID del programma in localStorage per recuperarlo nella pagina di modifica
     localStorage.setItem('editProgramId', programId);
-    window.location.href = 'modify_program.html';
+    // Vai alla pagina di modifica
+    loadPage('modify_program.html');
 }
 
-// Funzione per mostrare toast
-function showToast(message, type = 'info') {
-    if (typeof window.showToast === 'function') {
-        window.showToast(message, type);
-    } else {
-        alert(message);
+// Funzione per eliminare un programma
+function deleteProgram(programId) {
+    if (!confirm('Sei sicuro di voler eliminare questo programma? Questa operazione non può essere annullata.')) {
+        return;
     }
+    
+    fetch('/delete_program', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: programId })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showToast('Programma eliminato con successo', 'success');
+            // Ricarica i programmi
+            loadUserSettingsAndPrograms();
+        } else {
+            showToast(`Errore nell'eliminazione del programma: ${data.error || 'Errore sconosciuto'}`, 'error');
+        }
+    })
+    .catch(error => {
+        console.error("Errore durante l'eliminazione del programma:", error);
+        showToast("Errore di rete durante l'eliminazione del programma", 'error');
+    });
 }
 
-// Inizializzazione
+// Funzione per attivare/disattivare i programmi automatici
+function toggleAutomaticPrograms(enable) {
+    // Disabilita i pulsanti durante la richiesta
+    const autoBtns = document.querySelectorAll('.auto-btn');
+    autoBtns.forEach(btn => btn.disabled = true);
+    
+    fetch('/toggle_automatic_programs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enable })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            userSettings.automatic_programs_enabled = enable;
+            updateAutoProgramsStatus(enable);
+            
+            // Aggiorna lo stato attivo dei pulsanti
+            document.querySelectorAll('.auto-btn.on').forEach(btn => {
+                btn.classList.toggle('active', enable);
+            });
+            document.querySelectorAll('.auto-btn.off').forEach(btn => {
+                btn.classList.toggle('active', !enable);
+            });
+            
+            showToast(`Programmi automatici ${enable ? 'attivati' : 'disattivati'} con successo`, 'success');
+        } else {
+            showToast(`Errore: ${data.error || 'Errore sconosciuto'}`, 'error');
+        }
+    })
+    .catch(error => {
+        console.error('Errore durante la modifica dello stato dei programmi automatici:', error);
+        showToast('Errore di rete', 'error');
+    })
+    .finally(() => {
+        // Riabilita i pulsanti
+        autoBtns.forEach(btn => btn.disabled = false);
+    });
+}
+
+// Inizializzazione al caricamento del documento
 document.addEventListener('DOMContentLoaded', initializeViewProgramsPage);

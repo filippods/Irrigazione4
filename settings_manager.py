@@ -1,7 +1,13 @@
+"""
+Modulo per la gestione delle impostazioni utente.
+Gestisce il caricamento, salvataggio e ripristino delle impostazioni utente.
+"""
 import ujson
 import uos
+import gc
 from log_manager import log_event
 
+# Configurazione predefinita
 FACTORY_SETTINGS = {
     "client_enabled": False,
     "wifi": {"ssid": "", "password": ""},
@@ -24,7 +30,12 @@ FACTORY_SETTINGS = {
 }
 
 def ensure_directory_exists(path):
-    """Crea la directory se non esiste"""
+    """
+    Crea la directory se non esiste
+    
+    Args:
+        path: Percorso della directory da creare
+    """
     try:
         dirs = path.split('/')
         current_dir = ""
@@ -42,7 +53,12 @@ def ensure_directory_exists(path):
         print(f"Errore nella creazione della directory {path}: {e}")
 
 def load_user_settings():
-    """Carica le impostazioni da user_settings.json, garantendo valori di default se mancano."""
+    """
+    Carica le impostazioni da user_settings.json, garantendo valori di default se mancano.
+    
+    Returns:
+        dict: Impostazioni utente
+    """
     ensure_directory_exists('/data')
     
     try:
@@ -71,14 +87,47 @@ def load_user_settings():
         return FACTORY_SETTINGS.copy()
 
 def save_user_settings(settings):
-    """Salva le impostazioni su user_settings.json"""
+    """
+    Salva le impostazioni su user_settings.json
+    
+    Args:
+        settings: Dizionario delle impostazioni da salvare
+        
+    Returns:
+        boolean: True se l'operazione è riuscita, False altrimenti
+    """
     ensure_directory_exists('/data')
     
     try:
+        # Validazione delle impostazioni
+        if not isinstance(settings, dict):
+            log_event("Tentativo di salvare impostazioni non valide", "ERROR")
+            return False
+
+        # Assicurati che tutte le chiavi siano presenti
+        for key, value in FACTORY_SETTINGS.items():
+            if key not in settings:
+                settings[key] = value
+                
+        # Validazione delle zone
+        if 'zones' in settings:
+            for i, zone in enumerate(settings['zones']):
+                if 'id' not in zone:
+                    zone['id'] = i
+                if 'status' not in zone:
+                    zone['status'] = 'show'
+                if 'pin' not in zone:
+                    zone['pin'] = 14 + i
+                if 'name' not in zone:
+                    zone['name'] = f"Zona {i+1}"
+        
         with open('/data/user_settings.json', 'w') as f:
             ujson.dump(settings, f)
             log_event("Impostazioni utente salvate con successo", "INFO")
             print("Impostazioni salvate con successo.")
+            
+        # Forza garbage collection
+        gc.collect()
         return True
     except OSError as e:
         log_event(f"Errore durante il salvataggio delle impostazioni utente: {e}", "ERROR")
@@ -86,7 +135,12 @@ def save_user_settings(settings):
         return False
 
 def reset_user_settings():
-    """Ripristina le impostazioni utente ai valori di fabbrica"""
+    """
+    Ripristina le impostazioni utente ai valori di fabbrica
+    
+    Returns:
+        boolean: True se l'operazione è riuscita, False altrimenti
+    """
     try:
         save_user_settings(FACTORY_SETTINGS.copy())
         log_event("Impostazioni utente ripristinate ai valori di fabbrica", "INFO")
@@ -98,7 +152,12 @@ def reset_user_settings():
         return False
 
 def reset_factory_data():
-    """Ripristina tutti i dati ai valori di fabbrica"""
+    """
+    Ripristina tutti i dati ai valori di fabbrica
+    
+    Returns:
+        boolean: True se l'operazione è riuscita, False altrimenti
+    """
     try:
         # Ripristina impostazioni utente
         reset_user_settings()
@@ -121,7 +180,12 @@ def reset_factory_data():
         return False
 
 def factory_reset():
-    """Ripristina le impostazioni di fabbrica"""
+    """
+    Ripristina le impostazioni di fabbrica
+    
+    Returns:
+        boolean: True se l'operazione è riuscita, False altrimenti
+    """
     try:
         save_user_settings(FACTORY_SETTINGS.copy())
         log_event("Impostazioni di fabbrica ripristinate", "INFO")

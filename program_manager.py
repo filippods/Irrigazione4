@@ -1,17 +1,27 @@
+"""
+Modulo per la gestione dei programmi di irrigazione.
+Gestisce il caricamento, la creazione, l'aggiornamento e l'esecuzione dei programmi.
+"""
 import ujson
 import time
 import uasyncio as asyncio
 from zone_manager import start_zone, stop_zone, stop_all_zones, get_active_zones_count
 from program_state import program_running, current_program_id, save_program_state, load_program_state
-from settings_manager import load_user_settings, save_user_settings, reset_user_settings, reset_factory_data, factory_reset
+from settings_manager import load_user_settings, save_user_settings
 from log_manager import log_event
 
 PROGRAM_STATE_FILE = '/data/program_state.json'
+PROGRAM_FILE = '/data/program.json'
 
-# Carica i programmi
 def load_programs():
+    """
+    Carica i programmi dal file.
+    
+    Returns:
+        dict: Dizionario dei programmi
+    """
     try:
-        with open('/data/program.json', 'r') as f:
+        with open(PROGRAM_FILE, 'r') as f:
             programs = ujson.load(f)
             # Assicura che tutti gli ID siano stringhe
             for prog_id in list(programs.keys()):
@@ -27,19 +37,38 @@ def load_programs():
         log_event(f"Errore durante il caricamento dei programmi: {e}", "ERROR")
         return {}
 
-# Funzione per salvare i programmi
 def save_programs(programs):
+    """
+    Salva i programmi su file.
+    
+    Args:
+        programs: Dizionario dei programmi da salvare
+        
+    Returns:
+        boolean: True se l'operazione è riuscita, False altrimenti
+    """
     try:
-        with open('/data/program.json', 'w') as f:
+        with open(PROGRAM_FILE, 'w') as f:
             ujson.dump(programs, f)
         log_event("Programmi salvati con successo", "INFO")
+        return True
     except OSError as e:
         log_event(f"Errore durante il salvataggio dei programmi: {e}", "ERROR")
         print(f"Errore durante il salvataggio dei programmi: {e}")
+        return False
 
-# Verifica conflitti tra programmi
 def check_program_conflicts(program, programs, exclude_id=None):
-    """Verifica se ci sono conflitti con altri programmi negli stessi mesi."""
+    """
+    Verifica se ci sono conflitti tra programmi negli stessi mesi.
+    
+    Args:
+        program: Programma da verificare
+        programs: Dizionario di tutti i programmi
+        exclude_id: ID del programma da escludere dalla verifica (per l'aggiornamento)
+        
+    Returns:
+        tuple: (has_conflict, conflict_message)
+    """
     program_months = set(program.get('months', []))
     if not program_months:
         return False, ""
@@ -55,8 +84,17 @@ def check_program_conflicts(program, programs, exclude_id=None):
     
     return False, ""
 
-# Aggiornamento di un programma esistente
 def update_program(program_id, updated_program):
+    """
+    Aggiorna un programma esistente.
+    
+    Args:
+        program_id: ID del programma da aggiornare
+        updated_program: Nuovo programma
+        
+    Returns:
+        tuple: (success, error_message)
+    """
     program_id = str(program_id)  # Assicura che l'ID sia una stringa
     programs = load_programs()
     
@@ -72,17 +110,29 @@ def update_program(program_id, updated_program):
             stop_program()
             
         programs[program_id] = updated_program
-        save_programs(programs)
-        log_event(f"Programma {program_id} aggiornato con successo", "INFO")
-        return True, ""
+        if save_programs(programs):
+            log_event(f"Programma {program_id} aggiornato con successo", "INFO")
+            return True, ""
+        else:
+            error_msg = f"Errore durante il salvataggio del programma {program_id}"
+            log_event(error_msg, "ERROR")
+            return False, error_msg
     else:
         error_msg = f"Errore: Programma con ID {program_id} non trovato."
         log_event(error_msg, "ERROR")
         print(error_msg)
         return False, error_msg
 
-# Eliminazione di un programma
 def delete_program(program_id):
+    """
+    Elimina un programma.
+    
+    Args:
+        program_id: ID del programma da eliminare
+        
+    Returns:
+        boolean: True se l'operazione è riuscita, False altrimenti
+    """
     program_id = str(program_id)  # Assicura che l'ID sia una stringa
     programs = load_programs()
     
@@ -92,17 +142,28 @@ def delete_program(program_id):
             stop_program()
             
         del programs[program_id]
-        save_programs(programs)
-        log_event(f"Programma {program_id} eliminato con successo", "INFO")
-        return True
+        if save_programs(programs):
+            log_event(f"Programma {program_id} eliminato con successo", "INFO")
+            return True
+        else:
+            log_event(f"Errore durante l'eliminazione del programma {program_id}", "ERROR")
+            return False
     else:
         error_msg = f"Errore: Programma con ID {program_id} non trovato."
         log_event(error_msg, "ERROR")
         print(error_msg)
         return False
 
-# Controlla se il programma è attivo nel mese corrente
 def is_program_active_in_current_month(program):
+    """
+    Controlla se il programma è attivo nel mese corrente.
+    
+    Args:
+        program: Programma da verificare
+        
+    Returns:
+        boolean: True se il programma è attivo nel mese corrente, False altrimenti
+    """
     current_month = time.localtime()[1]
     months_map = {
         "Gennaio": 1, "Febbraio": 2, "Marzo": 3, "Aprile": 4,
@@ -112,14 +173,24 @@ def is_program_active_in_current_month(program):
     program_months = [months_map[month] for month in program.get('months', []) if month in months_map]
     return current_month in program_months
 
-# Verifica se il programma è previsto per oggi
 def is_program_due_today(program):
+    """
+    Verifica se il programma è previsto per oggi in base alla cadenza.
+    
+    Args:
+        program: Programma da verificare
+        
+    Returns:
+        boolean: True se il programma è previsto per oggi, False altrimenti
+    """
     current_day_of_year = time.localtime()[7]
     last_run_day = -1
 
     if 'last_run_date' in program:
         try:
-            last_run_day = time.strptime(program['last_run_date'], '%Y-%m-%d')[7]
+            last_run_date = program['last_run_date']
+            year, month, day = map(int, last_run_date.split('-'))
+            last_run_day = time.localtime(time.mktime((year, month, day, 0, 0, 0, 0, 0)))[7]
         except Exception as e:
             log_event(f"Errore nella conversione della data di esecuzione: {e}", "ERROR")
             print(f"Errore nella conversione della data di esecuzione: {e}")
@@ -140,7 +211,20 @@ def is_program_due_today(program):
     return False
 
 async def execute_program(program, manual=False):
+    """
+    Esegue un programma di irrigazione.
+    
+    Args:
+        program: Programma da eseguire
+        manual: Flag che indica se l'esecuzione è manuale
+        
+    Returns:
+        boolean: True se l'esecuzione è completata con successo, False altrimenti
+    """
     global program_running, current_program_id
+    
+    # Importazione locale per evitare importazioni circolari
+    from program_state import program_running, current_program_id, save_program_state
     
     if program_running:
         log_event(f"Impossibile eseguire il programma: un altro programma è già in esecuzione ({current_program_id})", "WARNING")
@@ -165,7 +249,8 @@ async def execute_program(program, manual=False):
     current_program_id = program_id
     save_program_state()
     
-    log_event(f"Avvio del programma: {program.get('name', 'Senza nome')} (ID: {program_id})", "INFO")
+    program_name = program.get('name', 'Senza nome')
+    log_event(f"Avvio del programma: {program_name} (ID: {program_id})", "INFO")
 
     settings = load_user_settings()
     activation_delay = settings.get('activation_delay', 0)
@@ -214,17 +299,31 @@ async def execute_program(program, manual=False):
                     if not program_running:
                         break
                     await asyncio.sleep(1)
+        
+        update_last_run_date(program_id)
+        log_event(f"Programma {program_name} completato", "INFO")
+        return True
+    except Exception as e:
+        log_event(f"Errore durante l'esecuzione del programma {program_name}: {e}", "ERROR")
+        print(f"Errore durante l'esecuzione del programma: {e}")
+        return False
     finally:
         program_running = False
         current_program_id = None
         save_program_state()
-        update_last_run_date(program_id)
-        log_event(f"Programma {program.get('name', 'Senza nome')} completato", "INFO")
-        return True
+        stop_all_zones()  # Assicurati che tutte le zone siano disattivate
 
-# Ferma un programma
 def stop_program():
+    """
+    Ferma il programma attualmente in esecuzione.
+    
+    Returns:
+        boolean: True se l'operazione è riuscita, False altrimenti
+    """
     global program_running, current_program_id
+    
+    # Importazione locale per evitare importazioni circolari
+    from program_state import program_running, current_program_id, save_program_state
     
     if not program_running:
         log_event("Nessun programma in esecuzione da interrompere", "INFO")
@@ -242,13 +341,24 @@ def stop_program():
     return True
 
 def reset_program_state():
+    """
+    Resetta lo stato del programma.
+    """
     global program_running, current_program_id
+    
+    # Importazione locale per evitare importazioni circolari
+    from program_state import program_running, current_program_id, save_program_state
+    
     program_running = False
     current_program_id = None
     save_program_state()
     log_event("Stato del programma resettato", "INFO")
 
 async def check_programs():
+    """
+    Controlla se ci sono programmi da eseguire automaticamente.
+    Deve essere chiamato periodicamente.
+    """
     # Carica le impostazioni per verificare se i programmi automatici sono abilitati
     settings = load_user_settings()
     if not settings.get('automatic_programs_enabled', False):
@@ -263,6 +373,7 @@ async def check_programs():
     for program_id, program in programs.items():
         activation_time = program.get('activation_time', '')
         
+        # Verifica se il programma deve essere eseguito
         if (current_time_str == activation_time and
             is_program_active_in_current_month(program) and
             is_program_due_today(program)):
@@ -280,8 +391,13 @@ async def check_programs():
             if success:
                 update_last_run_date(program_id)
 
-# Aggiorna la data dell'ultima esecuzione del programma
 def update_last_run_date(program_id):
+    """
+    Aggiorna la data dell'ultima esecuzione del programma.
+    
+    Args:
+        program_id: ID del programma
+    """
     program_id = str(program_id)  # Assicura che l'ID sia una stringa
     current_date = time.strftime('%Y-%m-%d', time.localtime())
     programs = load_programs()

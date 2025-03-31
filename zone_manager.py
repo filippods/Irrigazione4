@@ -1,4 +1,7 @@
-import ujson
+"""
+Modulo per la gestione delle zone di irrigazione.
+Gestisce l'attivazione e la disattivazione delle zone, rispettando i limiti impostati dall'utente.
+"""
 import time
 import machine
 from machine import Pin
@@ -12,8 +15,13 @@ active_zones = {}
 zone_pins = {}
 safety_relay = None
 
-# Inizializza i pin
 def initialize_pins():
+    """
+    Inizializza i pin del sistema di irrigazione.
+    
+    Returns:
+        boolean: True se almeno una zona è stata inizializzata, False altrimenti
+    """
     global zone_pins, safety_relay
     
     settings = load_user_settings()
@@ -63,8 +71,13 @@ def initialize_pins():
     
     return initialized_zones > 0
 
-# Ritorna lo stato attuale delle zone
 def get_zones_status():
+    """
+    Ritorna lo stato attuale di tutte le zone.
+    
+    Returns:
+        list: Lista di dizionari con lo stato di ogni zona
+    """
     global active_zones
     zones_status = []
     
@@ -73,6 +86,9 @@ def get_zones_status():
     
     for zone in configured_zones:
         zone_id = zone.get('id')
+        if zone.get('status') != 'show':
+            continue
+            
         zone_info = {
             'id': zone_id,
             'name': zone.get('name', f'Zona {zone_id + 1}'),
@@ -92,22 +108,38 @@ def get_zones_status():
     
     return zones_status
 
-# Funzione per ottenere il numero di zone attive
 def get_active_zones_count():
+    """
+    Ritorna il numero di zone attualmente attive.
+    
+    Returns:
+        int: Numero di zone attive
+    """
     global active_zones
     return len(active_zones)
 
-# Versione NON asincrona di start_zone per essere chiamata dall'API
 def start_zone(zone_id, duration):
+    """
+    Attiva una zona di irrigazione.
+    
+    Args:
+        zone_id: ID della zona da attivare
+        duration: Durata dell'attivazione in minuti
+        
+    Returns:
+        boolean: True se l'operazione è riuscita, False altrimenti
+    """
     global active_zones, zone_pins, safety_relay, program_running
     
     # Converti in interi
     zone_id = int(zone_id)
     duration = int(duration)
     
+    # Verifica se un programma è in esecuzione automatica
+    from program_state import program_running
     if program_running:
-        log_event(f"Impossibile avviare la zona {zone_id} poiché un programma è già in esecuzione", "WARNING")
-        print(f"Impossibile avviare la zona {zone_id} poiché un programma è già in esecuzione.")
+        log_event(f"Impossibile avviare la zona {zone_id}: un programma è già in esecuzione", "WARNING")
+        print(f"Impossibile avviare la zona {zone_id}: un programma è già in esecuzione.")
         return False
 
     # Controlla se la zona esiste
@@ -116,13 +148,20 @@ def start_zone(zone_id, duration):
         print(f"Errore: Zona {zone_id} non trovata.")
         return False
     
-    # Verifica il limite massimo di zone attive
+    # Controlla che la durata sia valida
     settings = load_user_settings()
+    max_duration = settings.get('max_zone_duration', 180)
+    if duration <= 0 or duration > max_duration:
+        log_event(f"Errore: Durata non valida per la zona {zone_id}", "ERROR")
+        print(f"Errore: Durata non valida per la zona {zone_id}.")
+        return False
+    
+    # Verifica il limite massimo di zone attive
     max_active_zones = settings.get('max_active_zones', 1)
     
     if len(active_zones) >= max_active_zones and zone_id not in active_zones:
-        log_event(f"Impossibile avviare la zona {zone_id}. Numero massimo di zone attive raggiunto ({max_active_zones})", "WARNING")
-        print(f"Impossibile avviare la zona {zone_id}. Numero massimo di zone attive raggiunto ({max_active_zones}).")
+        log_event(f"Impossibile avviare la zona {zone_id}: Numero massimo di zone attive raggiunto ({max_active_zones})", "WARNING")
+        print(f"Impossibile avviare la zona {zone_id}: Numero massimo di zone attive raggiunto ({max_active_zones}).")
         return False
 
     # Accende il relè di sicurezza se non è già acceso
@@ -165,8 +204,14 @@ def start_zone(zone_id, duration):
     
     return True
 
-# Timer asincrono per arrestare automaticamente la zona dopo la durata specificata
 async def _zone_timer(zone_id, duration):
+    """
+    Timer asincrono per arrestare automaticamente la zona dopo la durata specificata.
+    
+    Args:
+        zone_id: ID della zona
+        duration: Durata in minuti
+    """
     try:
         await asyncio.sleep(duration * 60)  # Durata in minuti convertita in secondi
         if zone_id in active_zones:
@@ -178,8 +223,16 @@ async def _zone_timer(zone_id, duration):
         log_event(f"Errore nel timer della zona {zone_id}: {e}", "ERROR")
         print(f"Errore nel timer della zona {zone_id}: {e}")
 
-# Versione NON asincrona di stop_zone per essere chiamata dall'API
 def stop_zone(zone_id):
+    """
+    Disattiva una zona di irrigazione.
+    
+    Args:
+        zone_id: ID della zona da disattivare
+        
+    Returns:
+        boolean: True se l'operazione è riuscita, False altrimenti
+    """
     global active_zones, zone_pins, safety_relay
     
     # Converti in intero
@@ -223,15 +276,23 @@ def stop_zone(zone_id):
             
     return True
 
-# Funzione di emergenza per arrestare tutte le zone
 def stop_all_zones():
+    """
+    Disattiva tutte le zone attive.
+    
+    Returns:
+        boolean: True se l'operazione è riuscita, False altrimenti
+    """
     global active_zones
     
     if not active_zones:
-        return
+        return True
         
+    success = True
     for zone_id in list(active_zones.keys()):
-        stop_zone(zone_id)
+        if not stop_zone(zone_id):
+            success = False
     
     log_event("Tutte le zone arrestate", "INFO")
     print("Tutte le zone arrestate.")
+    return success

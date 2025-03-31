@@ -1,3 +1,7 @@
+"""
+Modulo per la gestione del server web.
+Fornisce le API REST e serve i file statici.
+"""
 from microdot import Request, Microdot, Response, send_file
 import uasyncio as asyncio
 from log_manager import log_event, get_logs, clear_logs
@@ -7,7 +11,8 @@ from settings_manager import (
     save_user_settings,
     reset_user_settings,
     reset_factory_data,
-    )
+    ensure_directory_exists
+)
 from program_manager import (
     load_programs,
     save_programs,
@@ -15,11 +20,16 @@ from program_manager import (
     update_program,
     delete_program,
     execute_program,
-    load_program_state,
-    program_running,
     check_program_conflicts
-    )
-from wifi_manager import start_access_point, clear_wifi_scan_file, save_wifi_scan_results
+)
+from program_state import program_running, current_program_id, load_program_state
+from wifi_manager import (
+    start_access_point,
+    clear_wifi_scan_file,
+    save_wifi_scan_results,
+    connect_to_wifi,
+    reset_wifi_module
+)
 from zone_manager import start_zone, stop_zone, stop_all_zones, get_zones_status
 
 import network
@@ -27,24 +37,55 @@ import ujson
 import uos
 import time
 import gc
+import machine
 
-html_base_path = '/web'
-data_base_path = '/data'
-wifi_scan_file = '/data/wifi_scan.json'
+# Configurazione
+HTML_BASE_PATH = '/web'
+DATA_BASE_PATH = '/data'
+WIFI_SCAN_FILE = '/data/wifi_scan.json'
 
 app = Microdot()
-Request.max_content_length = 1024 * 1024
+Request.max_content_length = 1024 * 1024  # 1MB per le richieste
 
 def json_response(data, status_code=200):
-    """Helper per creare risposte JSON standardizzate"""
+    """
+    Helper per creare risposte JSON standardizzate.
+    
+    Args:
+        data: Dati da convertire in JSON
+        status_code: Codice di stato HTTP
+        
+    Returns:
+        Response: Oggetto risposta Microdot
+    """
     return Response(
         body=ujson.dumps(data),
         status_code=status_code,
         headers={'Content-Type': 'application/json'}
     )
 
+# Funzione per verificare se un file esiste
+def file_exists(path):
+    """
+    Verifica se un file esiste.
+    
+    Args:
+        path: Percorso del file
+        
+    Returns:
+        boolean: True se il file esiste, False altrimenti
+    """
+    try:
+        uos.stat(path)
+        return True
+    except OSError:
+        return False
+
+# -------- API endpoints --------
+
 @app.route('/data/system_log.json', methods=['GET'])
 def get_system_logs(request):
+    """API per ottenere i log di sistema."""
     try:
         logs = get_logs()
         return json_response(logs)
@@ -54,6 +95,7 @@ def get_system_logs(request):
 
 @app.route('/clear_logs', methods=['POST'])
 def clear_system_logs(request):
+    """API per cancellare i log di sistema."""
     try:
         success = clear_logs()
         if success:
@@ -67,16 +109,19 @@ def clear_system_logs(request):
 
 @app.route('/data/wifi_scan.json', methods=['GET'])
 def get_wifi_scan_results(request):
+    """API per ottenere i risultati della scansione WiFi."""
     try:
-        if uos.stat('/data/wifi_scan.json'):
-            return send_file('/data/wifi_scan.json', content_type='application/json')
+        if file_exists(WIFI_SCAN_FILE):
+            return send_file(WIFI_SCAN_FILE, content_type='application/json')
         else:
             return Response('File not found', status_code=404)
-    except OSError:
-        return Response('File not found', status_code=404)
+    except Exception as e:
+        log_event(f"Errore durante la lettura del file di scansione WiFi: {e}", "ERROR")
+        return Response('Internal Server Error', status_code=500)
 
 @app.route('/scan_wifi', methods=['GET'])
 def scan_wifi(request):
+    """API per avviare una scansione WiFi."""
     try:
         log_event("Avvio della scansione Wi-Fi", "INFO")
         print("Avvio della scansione Wi-Fi")
@@ -112,6 +157,7 @@ def scan_wifi(request):
 
 @app.route('/clear_wifi_scan_file', methods=['POST'])
 def clear_wifi_scan(request):
+    """API per cancellare il file di scansione WiFi."""
     try:
         clear_wifi_scan_file()
         return json_response({'success': True})
@@ -121,6 +167,7 @@ def clear_wifi_scan(request):
 
 @app.route('/get_zones_status', methods=['GET'])
 def get_zones_status_endpoint(request):
+    """API per ottenere lo stato delle zone."""
     try:
         zones_status = get_zones_status()
         return json_response(zones_status)
@@ -131,6 +178,7 @@ def get_zones_status_endpoint(request):
 
 @app.route('/get_connection_status', methods=['GET'])
 def get_connection_status(request):
+    """API per ottenere lo stato della connessione WiFi."""
     print("Richiesta GET /get_connection_status ricevuta")
     try:
         wlan_sta = network.WLAN(network.STA_IF)
@@ -160,6 +208,7 @@ def get_connection_status(request):
 
 @app.route('/activate_ap', methods=['POST'])
 def activate_ap(request):
+    """API per attivare l'access point."""
     try:
         start_access_point()  # Attiva l'AP con le impostazioni salvate
         log_event("Access Point attivato", "INFO")
@@ -169,39 +218,20 @@ def activate_ap(request):
         print(f"Error starting AP: {e}")
         return json_response({'success': False, 'error': str(e)}, 500)
 
-# Funzione per verificare se un file esiste
-def file_exists(path):
-    try:
-        uos.stat(path)
-        return True
-    except OSError:
-        return False
-
 @app.route('/data/user_settings.json', methods=['GET'])
 def get_user_settings(request):
+    """API per ottenere le impostazioni utente."""
     try:
-        if file_exists(data_base_path + '/user_settings.json'):
-            # Ritorna il file di configurazione utente
-            with open(data_base_path + '/user_settings.json', 'r') as f:
-                settings = ujson.load(f)
-            
-            # Debug per verificare i dati
-            print(f"Tipo di 'settings' caricato da 'user_settings.json': {type(settings)}")
-            print(f"Contenuto di 'settings': {settings}")
-            
-            return json_response(settings)
-        else:
-            # Creazione di un file di configurazione vuoto se non esiste
-            settings = load_user_settings()  # Questo caricherà le impostazioni predefinite
-            return json_response(settings)
+        settings = load_user_settings()
+        return json_response(settings)
     except Exception as e:
         log_event(f"Errore durante il caricamento di user_settings.json: {e}", "ERROR")
         print(f"Errore durante il caricamento di user_settings.json: {e}")
         return Response('Errore interno del server', status_code=500)
 
-# Route per ottenere program.json
 @app.route('/data/program.json', methods=['GET'])
 def get_programs(request):
+    """API per ottenere i programmi."""
     try:
         programs = load_programs()
         return json_response(programs)
@@ -210,9 +240,9 @@ def get_programs(request):
         print(f"Errore durante il caricamento di program.json: {e}")
         return Response('Errore interno del server', status_code=500)
 
-# Route per abilitare/disabilitare i programmi automatici
 @app.route('/toggle_automatic_programs', methods=['POST'])
 def toggle_automatic_programs(request):
+    """API per abilitare/disabilitare i programmi automatici."""
     try:
         data = request.json
         if data is None:
@@ -232,9 +262,9 @@ def toggle_automatic_programs(request):
         print(f"Errore durante la modifica dell'impostazione dei programmi automatici: {e}")
         return json_response({'success': False, 'error': str(e)}, 500)
 
-# Endpoint per ottenere la lista delle zone
 @app.route('/get_zones', methods=['GET'])
 def get_zones(request):
+    """API per ottenere la lista delle zone."""
     try:
         settings = load_user_settings()
         zones = settings.get('zones', [])
@@ -244,9 +274,9 @@ def get_zones(request):
         print(f"Errore durante il caricamento delle zone: {e}")
         return json_response({'error': 'Errore nel caricamento delle zone'}, 500)
 
-# Endpoint per avviare una zona
 @app.route('/start_zone', methods=['POST'])
 def handle_start_zone(request):
+    """API per avviare una zona."""
     try:
         data = request.json
         if data is None:
@@ -269,22 +299,28 @@ def handle_start_zone(request):
             log_event(f"Errore: durata non valida per l'avvio della zona {zone_id}: {duration}", "ERROR")
             return json_response({'error': f'Durata non valida. Deve essere tra 1 e {max_duration} minuti'}, 400)
 
+        # Verifica se un programma è in esecuzione
+        load_program_state()
+        if program_running:
+            log_event(f"Impossibile avviare la zona {zone_id}: un programma è già in esecuzione", "WARNING")
+            return json_response({'error': 'Impossibile avviare la zona: un programma è già in esecuzione'}, 400)
+
         log_event(f"Avvio della zona {zone_id} per {duration} minuti", "INFO")
         print(f"Avvio della zona {zone_id} per {duration} minuti")
         
         result = start_zone(zone_id, duration)
         if result:
-            return json_response({"status": "Zona avviata"})
+            return json_response({"status": "Zona avviata", "success": True})
         else:
-            return json_response({'error': 'Errore durante l\'avvio della zona'}, 500)
+            return json_response({'error': "Errore durante l'avvio della zona", "success": False}, 500)
     except Exception as e:
         log_event(f"Errore durante l'avvio della zona: {e}", "ERROR")
         print(f"Errore durante l'avvio della zona: {e}")
-        return json_response({'error': 'Errore durante l\'avvio della zona'}, 500)
+        return json_response({'error': "Errore durante l'avvio della zona", "success": False}, 500)
 
-# Endpoint per fermare una zona
 @app.route('/stop_zone', methods=['POST'])
 def handle_stop_zone(request):
+    """API per fermare una zona."""
     try:
         data = request.json
         if data is None:
@@ -303,16 +339,17 @@ def handle_stop_zone(request):
         
         result = stop_zone(zone_id)
         if result:
-            return json_response({"status": "Zona arrestata"})
+            return json_response({"status": "Zona arrestata", "success": True})
         else:
-            return json_response({'error': 'Errore durante l\'arresto della zona'}, 500)
+            return json_response({'error': "Errore durante l'arresto della zona", "success": False}, 500)
     except Exception as e:
         log_event(f"Errore durante l'arresto della zona: {e}", "ERROR")
         print(f"Errore durante l'arresto della zona: {e}")
-        return json_response({'error': 'Errore durante l\'arresto della zona'}, 500)
+        return json_response({'error': "Errore durante l'arresto della zona", "success": False}, 500)
 
 @app.route('/stop_program', methods=['POST'])
 def stop_program_route(request):
+    """API per fermare il programma corrente."""
     try:
         log_event("Richiesta di interruzione del programma ricevuta", "INFO")
         print("Richiesta di interruzione ricevuta.")
@@ -323,9 +360,9 @@ def stop_program_route(request):
         print(f"Errore nell'arresto del programma: {e}")
         return json_response({'success': False, 'error': str(e)}, 500)
 
-# Route per salvare un nuovo programma
 @app.route('/save_program', methods=['POST'])
 def save_program_route(request):
+    """API per salvare un nuovo programma."""
     try:
         program_data = request.json
         if program_data is None:
@@ -361,25 +398,29 @@ def save_program_route(request):
             return json_response({'success': False, 'error': conflict_message}, 400)
 
         # Genera un nuovo ID per il programma
-        new_id = str(max([int(pid) for pid in programs.keys()] + [0]) + 1)
+        new_id = '1'
+        if programs:
+            new_id = str(max([int(pid) for pid in programs.keys()]) + 1)
         program_data['id'] = new_id  # Assicurati che l'ID sia una stringa
 
         # Aggiungi il nuovo programma al dizionario
         programs[new_id] = program_data
 
         # Salva i programmi aggiornati
-        save_programs(programs)
-        log_event(f"Nuovo programma '{program_data['name']}' creato con ID {new_id}", "INFO")
-
-        return json_response({'success': True, 'message': 'Programma salvato con successo', 'program_id': new_id})
+        if save_programs(programs):
+            log_event(f"Nuovo programma '{program_data['name']}' creato con ID {new_id}", "INFO")
+            return json_response({'success': True, 'message': 'Programma salvato con successo', 'program_id': new_id})
+        else:
+            log_event(f"Errore durante il salvataggio del programma '{program_data['name']}'", "ERROR")
+            return json_response({'success': False, 'error': 'Errore durante il salvataggio del programma'}, 500)
     except Exception as e:
         log_event(f"Errore durante il salvataggio del programma: {e}", "ERROR")
         print(f"Errore durante il salvataggio del programma: {e}")
         return json_response({'success': False, 'error': str(e)}, 500)
 
-# Route per aggiornare un programma esistente
 @app.route('/update_program', methods=['PUT'])
 def update_program_route(request):
+    """API per aggiornare un programma esistente."""
     try:
         updated_program_data = request.json
         if updated_program_data is None:
@@ -403,16 +444,16 @@ def update_program_route(request):
             log_event(f"Programma {program_id} aggiornato con successo", "INFO")
             return json_response({'success': True, 'message': 'Programma aggiornato con successo'})
         else:
-            log_event(f"Errore nell'aggiornamento del programma: {error_msg}", "ERROR")
-            return json_response({'success': False, 'error': error_msg}, 404)
+            log_event(f"Errore nell'aggiornamento del programma {program_id}: {error_msg}", "ERROR")
+            return json_response({'success': False, 'error': error_msg}, 400)
     except Exception as e:
         log_event(f"Errore durante l'aggiornamento del programma: {e}", "ERROR")
         print(f"Errore durante l'aggiornamento del programma: {e}")
         return json_response({'success': False, 'error': str(e)}, 500)
 
-# Route per eliminare un programma
 @app.route('/delete_program', methods=['POST'])
 def delete_program_route(request):
+    """API per eliminare un programma."""
     try:
         program_data = request.json
         if program_data is None:
@@ -438,12 +479,15 @@ def delete_program_route(request):
         print(f"Errore nell'eliminazione del programma: {e}")
         return json_response({'success': False, 'error': str(e)}, 500)
 
-# Route per riavviare il sistema
 @app.route('/restart_system', methods=['POST'])
 def restart_system_route(request):
+    """API per riavviare il sistema."""
     try:
         log_event("Riavvio del sistema richiesto", "INFO")
-        import machine
+        
+        # Disattiva tutte le zone prima del riavvio
+        stop_all_zones()
+        
         # Ritardo per consentire l'invio della risposta
         asyncio.create_task(_delayed_reset(2))
         return json_response({'success': True, 'message': 'Sistema in riavvio'})
@@ -453,13 +497,13 @@ def restart_system_route(request):
         return json_response({'success': False, 'error': str(e)}, 500)
 
 async def _delayed_reset(delay_seconds):
+    """Esegue un reset del sistema dopo un ritardo specificato."""
     await asyncio.sleep(delay_seconds)
-    import machine
     machine.reset()
 
-# Route per resettare le impostazioni
 @app.route('/reset_settings', methods=['POST'])
 def reset_settings_route(request):
+    """API per ripristinare le impostazioni predefinite."""
     try:
         success = reset_user_settings()
         if success:
@@ -473,9 +517,9 @@ def reset_settings_route(request):
         print(f"Errore durante il reset delle impostazioni: {e}")
         return json_response({'success': False, 'error': str(e)}, 500)
 
-# Route per resettare i dati di fabbrica
 @app.route('/reset_factory_data', methods=['POST'])
 def reset_factory_data_route(request):
+    """API per ripristinare le impostazioni e i dati di fabbrica."""
     try:
         success = reset_factory_data()
         if success:
@@ -491,6 +535,7 @@ def reset_factory_data_route(request):
 
 @app.route('/start_program', methods=['POST'])
 async def start_program_route(request):
+    """API per avviare manualmente un programma."""
     try:
         data = request.json
         if data is None:
@@ -530,65 +575,23 @@ async def start_program_route(request):
 
 @app.route('/get_program_state', methods=['GET'])
 def get_program_state(request):
+    """API per ottenere lo stato del programma corrente."""
     try:
-        with open('/data/program_state.json', 'r') as f:
-            state = ujson.load(f)
+        # Ricarichiamo lo stato per essere sicuri di avere dati aggiornati
+        load_program_state()
+        state = {
+            'program_running': program_running,
+            'current_program_id': current_program_id
+        }
         return json_response(state)
     except Exception as e:
         log_event(f"Errore durante il caricamento dello stato del programma: {e}", "ERROR")
         print(f"Errore durante il caricamento dello stato del programma: {e}")
         return json_response({'program_running': False, 'current_program_id': None})
 
-# Route per servire la pagina principale
-@app.route('/', methods=['GET'])
-def index(request):
-    try:
-        return send_file('/web/main.html')
-    except Exception as e:
-        log_event(f"Errore durante il caricamento di main.html: {e}", "ERROR")
-        print(f"Errore durante il caricamento di main.html: {e}")
-        return Response('Errore interno del server', status_code=500)
-
-# Route per servire i file statici (CSS, JS, immagini)
-@app.route('/<path:path>', methods=['GET'])
-def static_files(request, path):
-    try:
-        # Evita di intercettare percorsi che iniziano con 'data/'
-        if path.startswith('data/'):
-            return Response('Not Found', status_code=404)
-
-        file_path = '/web/' + path
-        if file_exists(file_path):
-            # Determina il tipo di contenuto in base all'estensione del file
-            if file_path.endswith('.html'):
-                content_type = 'text/html'
-            elif file_path.endswith('.css'):
-                content_type = 'text/css'
-            elif file_path.endswith('.js'):
-                content_type = 'application/javascript'
-            elif file_path.endswith('.json'):
-                content_type = 'application/json'
-            elif file_path.endswith('.png'):
-                content_type = 'image/png'
-            elif file_path.endswith('.jpg') or file_path.endswith('.jpeg'):
-                content_type = 'image/jpeg'
-            elif file_path.endswith('.ico'):
-                content_type = 'image/x-icon'
-            elif file_path.endswith('.webp'):
-                content_type = 'image/webp'
-            else:
-                content_type = 'text/plain'
-            return send_file(file_path, content_type=content_type)
-        else:
-            log_event(f"File non trovato: {path}", "WARNING")
-            return Response('File non trovato', status_code=404)
-    except Exception as e:
-        log_event(f"Errore durante il caricamento del file {path}: {e}", "ERROR")
-        print(f"Errore durante il caricamento del file {path}: {e}")
-        return Response('Errore interno del server', status_code=500)
-
 @app.route('/connect_wifi', methods=['POST'])
-def connect_wifi(request):
+def connect_wifi_route(request):
+    """API per connettersi a una rete WiFi."""
     try:
         # Ottieni i dati della richiesta
         data = request.json
@@ -651,6 +654,7 @@ def connect_wifi(request):
 
 @app.route('/save_user_settings', methods=['POST'])
 def save_user_settings_route(request):
+    """API per salvare le impostazioni utente."""
     try:
         # Ricevi i dati delle impostazioni dal client e assicurati che siano validi
         settings_data = request.json
@@ -715,6 +719,7 @@ def save_user_settings_route(request):
 
 @app.route('/disconnect_wifi', methods=['POST'])
 def disconnect_wifi(request):
+    """API per disconnettere il client WiFi."""
     try:
         wlan_sta = network.WLAN(network.STA_IF)
         if wlan_sta.isconnected():
@@ -728,14 +733,69 @@ def disconnect_wifi(request):
         print(f"Errore durante la disconnessione del WiFi client: {e}")
         return json_response({'success': False, 'error': str(e)}, 500)
 
+@app.route('/', methods=['GET'])
+def index(request):
+    """Route per servire la pagina principale."""
+    try:
+        return send_file('/web/main.html')
+    except Exception as e:
+        log_event(f"Errore durante il caricamento di main.html: {e}", "ERROR")
+        print(f"Errore durante il caricamento di main.html: {e}")
+        return Response('Errore interno del server', status_code=500)
+
+@app.route('/<path:path>', methods=['GET'])
+def static_files(request, path):
+    """Route per servire i file statici."""
+    try:
+        # Evita di intercettare percorsi che iniziano con 'data/'
+        if path.startswith('data/'):
+            return Response('Not Found', status_code=404)
+
+        file_path = f'/web/{path}'
+        if file_exists(file_path):
+            # Determina il tipo di contenuto in base all'estensione del file
+            if file_path.endswith('.html'):
+                content_type = 'text/html'
+            elif file_path.endswith('.css'):
+                content_type = 'text/css'
+            elif file_path.endswith('.js'):
+                content_type = 'application/javascript'
+            elif file_path.endswith('.json'):
+                content_type = 'application/json'
+            elif file_path.endswith('.png'):
+                content_type = 'image/png'
+            elif file_path.endswith('.jpg') or file_path.endswith('.jpeg'):
+                content_type = 'image/jpeg'
+            elif file_path.endswith('.ico'):
+                content_type = 'image/x-icon'
+            elif file_path.endswith('.webp'):
+                content_type = 'image/webp'
+            else:
+                content_type = 'text/plain'
+            return send_file(file_path, content_type=content_type)
+        else:
+            log_event(f"File non trovato: {path}", "WARNING")
+            return Response('File non trovato', status_code=404)
+    except Exception as e:
+        log_event(f"Errore durante il caricamento del file {path}: {e}", "ERROR")
+        print(f"Errore durante il caricamento del file {path}: {e}")
+        return Response('Errore interno del server', status_code=500)
+
 async def start_web_server():
+    """
+    Avvia il server web.
+    """
     try:
         print("Avvio del server web.")
         log_event("Avvio del server web", "INFO")
         
+        # Crea la directory data se non esiste
+        ensure_directory_exists('/data')
+        
         # Libera memoria prima di avviare il server
         gc.collect()
         
+        # Avvia il server sulla porta 80
         await app.start_server(host='0.0.0.0', port=80)
     except Exception as e:
         log_event(f"Errore durante l'avvio del server web: {e}", "ERROR")
