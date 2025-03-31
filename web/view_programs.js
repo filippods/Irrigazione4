@@ -1,4 +1,4 @@
-// view_programs.js - Script per la pagina di visualizzazione programmi
+// view_programs.js - Script per la pagina di visualizzazione programmi (versione corretta)
 
 // Variabili globali
 let programStatusInterval = null;
@@ -132,65 +132,60 @@ function loadUserSettingsAndPrograms() {
         programsContainer.innerHTML = '<div class="loading">Caricamento programmi...</div>';
     }
     
-    // Carica prima le impostazioni utente
-    fetch('/data/user_settings.json')
-        .then(response => {
+    // Uso Promise.all per fare richieste parallele
+    Promise.all([
+        fetch('/data/user_settings.json').then(response => {
             if (!response.ok) throw new Error('Errore nel caricamento delle impostazioni utente');
             return response.json();
-        })
-        .then(settings => {
-            userSettings = settings;
-            
-            // Crea una mappa di ID zona -> nome zona
-            zoneNameMap = {};
-            if (settings.zones && Array.isArray(settings.zones)) {
-                settings.zones.forEach(zone => {
-                    if (zone && zone.id !== undefined) {
-                        zoneNameMap[zone.id] = zone.name || `Zona ${zone.id + 1}`;
-                    }
-                });
-            }
-            
-            // Aggiorna lo stato dei programmi automatici
-            updateAutoProgramsStatus(settings.automatic_programs_enabled || false);
-            
-            // Poi carica i programmi
-            return fetch('/data/program.json');
-        })
-        .then(response => {
+        }),
+        fetch('/data/program.json').then(response => {
             if (!response.ok) throw new Error('Errore nel caricamento dei programmi');
             return response.json();
-        })
-        .then(programs => {
-            // Salva i programmi per riferimento futuro
-            programsData = programs || {};
-            
-            // Ottieni lo stato del programma corrente
-            return fetch('/get_program_state');
-        })
-        .then(response => {
+        }),
+        fetch('/get_program_state').then(response => {
             if (!response.ok) throw new Error('Errore nel caricamento dello stato del programma');
             return response.json();
         })
-        .then(state => {
-            // Ora che abbiamo tutti i dati necessari, possiamo renderizzare i programmi
-            renderProgramCards(programsData, state);
-        })
-        .catch(error => {
-            console.error('Errore nel caricamento dei dati:', error);
+    ])
+    .then(([settings, programs, state]) => {
+        userSettings = settings;
+        
+        // Crea una mappa di ID zona -> nome zona
+        zoneNameMap = {};
+        if (settings.zones && Array.isArray(settings.zones)) {
+            settings.zones.forEach(zone => {
+                if (zone && zone.id !== undefined) {
+                    zoneNameMap[zone.id] = zone.name || `Zona ${zone.id + 1}`;
+                }
+            });
+        }
+        
+        // Aggiorna lo stato dei programmi automatici
+        updateAutoProgramsStatus(settings.automatic_programs_enabled || false);
+        
+        // Salva i programmi per riferimento futuro
+        programsData = programs || {};
+        
+        // Ora che abbiamo tutti i dati necessari, possiamo renderizzare i programmi
+        renderProgramCards(programsData, state);
+    })
+    .catch(error => {
+        console.error('Errore nel caricamento dei dati:', error);
+        if (typeof showToast === 'function') {
             showToast('Errore nel caricamento dei dati', 'error');
-            
-            // Mostra un messaggio di errore
-            if (programsContainer) {
-                programsContainer.innerHTML = `
-                    <div class="empty-state">
-                        <h3>Errore nel caricamento dei programmi</h3>
-                        <p>${error.message}</p>
-                        <button class="btn" onclick="loadUserSettingsAndPrograms()">Riprova</button>
-                    </div>
-                `;
-            }
-        });
+        }
+        
+        // Mostra un messaggio di errore
+        if (programsContainer) {
+            programsContainer.innerHTML = `
+                <div class="empty-state">
+                    <h3>Errore nel caricamento dei programmi</h3>
+                    <p>${error.message}</p>
+                    <button class="btn" onclick="loadUserSettingsAndPrograms()">Riprova</button>
+                </div>
+            `;
+        }
+    });
 }
 
 // Aggiorna lo stato dei programmi automatici nella UI
@@ -233,7 +228,12 @@ function renderProgramCards(programs, state) {
         const program = programs[programId];
         if (!program) return; // Salta se il programma è nullo
         
-        const isActive = state.program_running && state.current_program_id === programId;
+        // Assicurati che l'ID del programma sia disponibile nell'oggetto
+        if (program.id === undefined) {
+            program.id = programId;
+        }
+        
+        const isActive = state.program_running && state.current_program_id === String(programId);
         
         // Costruisci la visualizzazione dei mesi
         const monthsHtml = buildMonthsGrid(program.months || []);
@@ -393,16 +393,22 @@ function startProgram(programId) {
     .then(response => response.json())
     .then(data => {
         if (data.success) {
-            showToast('Programma avviato con successo', 'success');
+            if (typeof showToast === 'function') {
+                showToast('Programma avviato con successo', 'success');
+            }
             // Aggiorna immediatamente l'interfaccia
             fetchProgramState();
         } else {
-            showToast(`Errore nell'avvio del programma: ${data.error || 'Errore sconosciuto'}`, 'error');
+            if (typeof showToast === 'function') {
+                showToast(`Errore nell'avvio del programma: ${data.error || 'Errore sconosciuto'}`, 'error');
+            }
         }
     })
     .catch(error => {
         console.error("Errore durante l'avvio del programma:", error);
-        showToast("Errore di rete durante l'avvio del programma", 'error');
+        if (typeof showToast === 'function') {
+            showToast("Errore di rete durante l'avvio del programma", 'error');
+        }
     })
     .finally(() => {
         if (startBtn) {
@@ -427,16 +433,22 @@ function stopProgram() {
     .then(response => response.json())
     .then(data => {
         if (data.success) {
-            showToast('Programma arrestato con successo', 'success');
+            if (typeof showToast === 'function') {
+                showToast('Programma arrestato con successo', 'success');
+            }
             // Aggiorna immediatamente l'interfaccia
             fetchProgramState();
         } else {
-            showToast(`Errore nell'arresto del programma: ${data.error || 'Errore sconosciuto'}`, 'error');
+            if (typeof showToast === 'function') {
+                showToast(`Errore nell'arresto del programma: ${data.error || 'Errore sconosciuto'}`, 'error');
+            }
         }
     })
     .catch(error => {
         console.error("Errore durante l'arresto del programma:", error);
-        showToast("Errore di rete durante l'arresto del programma", 'error');
+        if (typeof showToast === 'function') {
+            showToast("Errore di rete durante l'arresto del programma", 'error');
+        }
     })
     .finally(() => {
         stopBtns.forEach(btn => {
@@ -468,16 +480,22 @@ function deleteProgram(programId) {
     .then(response => response.json())
     .then(data => {
         if (data.success) {
-            showToast('Programma eliminato con successo', 'success');
+            if (typeof showToast === 'function') {
+                showToast('Programma eliminato con successo', 'success');
+            }
             // Ricarica i programmi
             loadUserSettingsAndPrograms();
         } else {
-            showToast(`Errore nell'eliminazione del programma: ${data.error || 'Errore sconosciuto'}`, 'error');
+            if (typeof showToast === 'function') {
+                showToast(`Errore nell'eliminazione del programma: ${data.error || 'Errore sconosciuto'}`, 'error');
+            }
         }
     })
     .catch(error => {
         console.error("Errore durante l'eliminazione del programma:", error);
-        showToast("Errore di rete durante l'eliminazione del programma", 'error');
+        if (typeof showToast === 'function') {
+            showToast("Errore di rete durante l'eliminazione del programma", 'error');
+        }
     });
 }
 
@@ -506,14 +524,20 @@ function toggleAutomaticPrograms(enable) {
                 btn.classList.toggle('active', !enable);
             });
             
-            showToast(`Programmi automatici ${enable ? 'attivati' : 'disattivati'} con successo`, 'success');
+            if (typeof showToast === 'function') {
+                showToast(`Programmi automatici ${enable ? 'attivati' : 'disattivati'} con successo`, 'success');
+            }
         } else {
-            showToast(`Errore: ${data.error || 'Errore sconosciuto'}`, 'error');
+            if (typeof showToast === 'function') {
+                showToast(`Errore: ${data.error || 'Errore sconosciuto'}`, 'error');
+            }
         }
     })
     .catch(error => {
         console.error('Errore durante la modifica dello stato dei programmi automatici:', error);
-        showToast('Errore di rete', 'error');
+        if (typeof showToast === 'function') {
+            showToast('Errore di rete', 'error');
+        }
     })
     .finally(() => {
         // Riabilita i pulsanti

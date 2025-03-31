@@ -1,8 +1,7 @@
-// create_program.js - Script per la pagina di creazione programmi
+// create_program.js - Script per la pagina di creazione programmi (versione corretta)
 
 // Variabili globali
 let editingProgramId = null;
-let userZones = [];
 const months = [
     'Gennaio', 'Febbraio', 'Marzo', 'Aprile', 
     'Maggio', 'Giugno', 'Luglio', 'Agosto', 
@@ -13,19 +12,23 @@ const months = [
 function initializeCreateProgramPage() {
     console.log("Inizializzazione pagina creazione programma");
     
-    // IMPORTANTE: Pulisci qualsiasi valore precedente di editProgramId
-    // Solo se stiamo nella pagina di creazione e non di modifica
+    // IMPORTANTE: Determina se siamo in una pagina di creazione o di modifica
     const currentPath = window.location.pathname;
-    if (currentPath.endsWith('create_program.html')) {
-        // Se siamo nella pagina di creazione, assicuriamoci che non ci sia un ID di modifica
-        if (localStorage.getItem('editProgramId')) {
-            console.log("Ripulito editProgramId dalla localStorage nella pagina di creazione");
+    
+    // Se siamo in una pagina di creazione, assicuriamoci che non ci sia un ID di modifica
+    // se il percorso termina con 'create_program.html'
+    if (currentPath.endsWith('create_program.html') || currentPath === '/') {
+        // Determina se siamo in modalità modifica
+        editingProgramId = localStorage.getItem('editProgramId');
+        
+        // Se non siamo in modalità modifica, assicuriamoci che non ci sia un ID salvato
+        if (!editingProgramId) {
+            console.log("Modalità creazione programma");
             localStorage.removeItem('editProgramId');
+        } else {
+            console.log("Modalità modifica programma, ID:", editingProgramId);
         }
     }
-    
-    // Verifica se stiamo modificando un programma esistente
-    editingProgramId = localStorage.getItem('editProgramId');
     
     // Carica i dati utente per ottenere le zone
     loadUserSettings()
@@ -34,22 +37,37 @@ function initializeCreateProgramPage() {
             generateMonthsGrid();
             
             // Genera la griglia delle zone
-            generateZonesGrid(userSettings.zones);
+            if (userSettings && userSettings.zones) {
+                generateZonesGrid(userSettings.zones);
+            } else {
+                console.error("Nessuna zona trovata nelle impostazioni");
+                showToast("Errore: nessuna zona configurata", "error");
+            }
             
             // Se stiamo modificando un programma esistente, carica i suoi dati
             if (editingProgramId) {
                 loadProgramData(editingProgramId);
                 
                 // Cambia il titolo della pagina
-                document.querySelector('.page-title').textContent = 'Modifica Programma';
+                const pageTitle = document.querySelector('.page-title');
+                if (pageTitle) {
+                    pageTitle.textContent = 'Modifica Programma';
+                }
                 
                 // Cambia il testo del pulsante
-                document.getElementById('save-button').textContent = 'Aggiorna Programma';
+                const saveButton = document.getElementById('save-button');
+                if (saveButton) {
+                    saveButton.textContent = 'Aggiorna Programma';
+                }
             }
         })
         .catch(error => {
             console.error('Errore nel caricamento delle impostazioni:', error);
-            showToast('Errore nel caricamento delle impostazioni', 'error');
+            if (typeof showToast === 'function') {
+                showToast('Errore nel caricamento delle impostazioni', 'error');
+            } else {
+                alert('Errore nel caricamento delle impostazioni');
+            }
         });
 }
 
@@ -62,12 +80,6 @@ function loadUserSettings() {
                 return response.json();
             })
             .then(userSettings => {
-                // Filtra solo le zone visibili
-                if (userSettings.zones && Array.isArray(userSettings.zones)) {
-                    userZones = userSettings.zones.filter(zone => zone && zone.status === 'show');
-                } else {
-                    userZones = [];
-                }
                 resolve(userSettings);
             })
             .catch(error => {
@@ -80,7 +92,10 @@ function loadUserSettings() {
 // Genera la griglia dei mesi
 function generateMonthsGrid() {
     const monthsGrid = document.getElementById('months-grid');
-    if (!monthsGrid) return;
+    if (!monthsGrid) {
+        console.error("Elemento months-grid non trovato");
+        return;
+    }
     
     monthsGrid.innerHTML = '';
     
@@ -101,7 +116,10 @@ function generateMonthsGrid() {
 // Genera la griglia delle zone
 function generateZonesGrid(zones) {
     const zonesGrid = document.getElementById('zones-grid');
-    if (!zonesGrid) return;
+    if (!zonesGrid) {
+        console.error("Elemento zones-grid non trovato");
+        return;
+    }
     
     zonesGrid.innerHTML = '';
     
@@ -237,7 +255,11 @@ function loadProgramData(programId) {
         })
         .catch(error => {
             console.error('Errore nel caricamento del programma:', error);
-            showToast(`Errore: ${error.message}`, 'error');
+            if (typeof showToast === 'function') {
+                showToast(`Errore: ${error.message}`, 'error');
+            } else {
+                alert(`Errore: ${error.message}`);
+            }
         });
 }
 
@@ -245,8 +267,10 @@ function loadProgramData(programId) {
 function saveProgram() {
     // Disabilita il pulsante durante il salvataggio
     const saveButton = document.getElementById('save-button');
-    saveButton.classList.add('loading');
-    saveButton.disabled = true;
+    if (saveButton) {
+        saveButton.classList.add('loading');
+        saveButton.disabled = true;
+    }
     
     // Raccogli i dati dal form
     const programName = document.getElementById('program-name').value.trim();
@@ -257,26 +281,44 @@ function saveProgram() {
     if (recurrence === 'personalizzata') {
         intervalDays = parseInt(document.getElementById('interval-days').value);
         if (isNaN(intervalDays) || intervalDays < 1) {
-            showToast('Inserisci un intervallo di giorni valido', 'error');
-            saveButton.classList.remove('loading');
-            saveButton.disabled = false;
+            if (typeof showToast === 'function') {
+                showToast('Inserisci un intervallo di giorni valido', 'error');
+            } else {
+                alert('Inserisci un intervallo di giorni valido');
+            }
+            if (saveButton) {
+                saveButton.classList.remove('loading');
+                saveButton.disabled = false;
+            }
             return;
         }
     }
     
     // Valida il nome del programma
     if (!programName) {
-        showToast('Inserisci un nome per il programma', 'error');
-        saveButton.classList.remove('loading');
-        saveButton.disabled = false;
+        if (typeof showToast === 'function') {
+            showToast('Inserisci un nome per il programma', 'error');
+        } else {
+            alert('Inserisci un nome per il programma');
+        }
+        if (saveButton) {
+            saveButton.classList.remove('loading');
+            saveButton.disabled = false;
+        }
         return;
     }
     
     // Valida l'orario di attivazione
     if (!activationTime) {
-        showToast('Seleziona un orario di attivazione', 'error');
-        saveButton.classList.remove('loading');
-        saveButton.disabled = false;
+        if (typeof showToast === 'function') {
+            showToast('Seleziona un orario di attivazione', 'error');
+        } else {
+            alert('Seleziona un orario di attivazione');
+        }
+        if (saveButton) {
+            saveButton.classList.remove('loading');
+            saveButton.disabled = false;
+        }
         return;
     }
     
@@ -287,9 +329,15 @@ function saveProgram() {
     });
     
     if (selectedMonths.length === 0) {
-        showToast('Seleziona almeno un mese', 'error');
-        saveButton.classList.remove('loading');
-        saveButton.disabled = false;
+        if (typeof showToast === 'function') {
+            showToast('Seleziona almeno un mese', 'error');
+        } else {
+            alert('Seleziona almeno un mese');
+        }
+        if (saveButton) {
+            saveButton.classList.remove('loading');
+            saveButton.disabled = false;
+        }
         return;
     }
     
@@ -301,9 +349,15 @@ function saveProgram() {
         const duration = parseInt(durationInput.value);
         
         if (isNaN(duration) || duration < 1) {
-            showToast(`Durata non valida per la zona ${userZones.find(z => z.id === zoneId)?.name || `Zona ${zoneId + 1}`}`, 'error');
-            saveButton.classList.remove('loading');
-            saveButton.disabled = false;
+            if (typeof showToast === 'function') {
+                showToast(`Durata non valida per la zona ${zoneId}`, 'error');
+            } else {
+                alert(`Durata non valida per la zona ${zoneId}`);
+            }
+            if (saveButton) {
+                saveButton.classList.remove('loading');
+                saveButton.disabled = false;
+            }
             return;
         }
         
@@ -314,9 +368,15 @@ function saveProgram() {
     });
     
     if (steps.length === 0) {
-        showToast('Seleziona almeno una zona', 'error');
-        saveButton.classList.remove('loading');
-        saveButton.disabled = false;
+        if (typeof showToast === 'function') {
+            showToast('Seleziona almeno una zona', 'error');
+        } else {
+            alert('Seleziona almeno una zona');
+        }
+        if (saveButton) {
+            saveButton.classList.remove('loading');
+            saveButton.disabled = false;
+        }
         return;
     }
     
@@ -359,12 +419,14 @@ function saveProgram() {
     })
     .then(data => {
         if (data.success) {
-            showToast(`Programma ${editingProgramId ? 'aggiornato' : 'salvato'} con successo`, 'success');
+            if (typeof showToast === 'function') {
+                showToast(`Programma ${editingProgramId ? 'aggiornato' : 'salvato'} con successo`, 'success');
+            } else {
+                alert(`Programma ${editingProgramId ? 'aggiornato' : 'salvato'} con successo`);
+            }
             
             // Pulisci il localStorage se stavamo modificando un programma
-            if (editingProgramId) {
-                localStorage.removeItem('editProgramId');
-            }
+            localStorage.removeItem('editProgramId');
             
             // Torna alla pagina dei programmi dopo un breve ritardo
             setTimeout(() => {
@@ -376,20 +438,24 @@ function saveProgram() {
     })
     .catch(error => {
         console.error('Errore:', error);
-        showToast(`Errore: ${error.message}`, 'error');
+        if (typeof showToast === 'function') {
+            showToast(`Errore: ${error.message}`, 'error');
+        } else {
+            alert(`Errore: ${error.message}`);
+        }
         
         // Riabilita il pulsante
-        saveButton.classList.remove('loading');
-        saveButton.disabled = false;
+        if (saveButton) {
+            saveButton.classList.remove('loading');
+            saveButton.disabled = false;
+        }
     });
 }
 
 // Torna alla pagina precedente
 function goBack() {
     // Pulisci il localStorage se stavamo modificando un programma
-    if (editingProgramId) {
-        localStorage.removeItem('editProgramId');
-    }
+    localStorage.removeItem('editProgramId');
     
     // Torna alla pagina dei programmi
     loadPage('view_programs.html');

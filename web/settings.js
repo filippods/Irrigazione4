@@ -11,9 +11,9 @@ let settingsModified = {
     advanced: false
 };
 
-// Inizializza la pagina delle impostazioni
+// Funzione per inizializzare la pagina delle impostazioni
 function initializeSettingsPage(userData) {
-    console.log("Inizializzazione pagina impostazioni");
+    console.log("Inizializzazione pagina impostazioni con dati:", userData);
     
     if (userData && Object.keys(userData).length > 0) {
         loadSettingsWithData(userData);
@@ -25,6 +25,7 @@ function initializeSettingsPage(userData) {
                 return response.json();
             })
             .then(data => {
+                console.log("Dati impostazioni caricati dal server:", data);
                 loadSettingsWithData(data);
             })
             .catch(error => {
@@ -45,8 +46,8 @@ function initializeSettingsPage(userData) {
 
 // Carica le impostazioni con i dati forniti
 function loadSettingsWithData(data) {
-    console.log("Dati impostazioni caricate:", data);
-    userSettings = data;
+    console.log("Caricamento impostazioni con dati:", data);
+    userSettings = data || {};
     
     // Impostazioni WiFi
     document.getElementById('client-enabled').checked = data.client_enabled || false;
@@ -65,8 +66,8 @@ function loadSettingsWithData(data) {
     }
     
     if (data.ap) {
-        document.getElementById('ap-ssid').value = data.ap.ssid || '';
-        document.getElementById('ap-password').value = data.ap.password || '';
+        document.getElementById('ap-ssid').value = data.ap.ssid || 'IrrigationSystem';
+        document.getElementById('ap-password').value = data.ap.password || '12345678';
     }
     
     // Impostazioni zone
@@ -139,8 +140,12 @@ function addChangeListeners() {
 
 // Genera la griglia delle zone con i dati forniti
 function renderZonesSettings(zones) {
+    console.log("Rendering zone settings con:", zones);
     const zonesGrid = document.getElementById('zones-grid');
-    if (!zonesGrid) return;
+    if (!zonesGrid) {
+        console.error("Elemento zones-grid non trovato");
+        return;
+    }
     
     zonesGrid.innerHTML = '';
     
@@ -149,10 +154,32 @@ function renderZonesSettings(zones) {
         return;
     }
     
-    // Debug delle zone
-    console.log("Rendering zones:", zones);
+    // Assicurati che tutte le zone abbiano i campi necessari
+    const defaultZones = [];
+    for (let i = 0; i < 8; i++) {
+        defaultZones.push({
+            id: i,
+            status: 'show',
+            pin: 14 + i,
+            name: `Zona ${i + 1}`
+        });
+    }
     
+    // Combina le zone esistenti con quelle di default
+    let combinedZones = [...defaultZones];
     zones.forEach(zone => {
+        if (zone && zone.id !== undefined) {
+            const index = combinedZones.findIndex(z => z.id === zone.id);
+            if (index !== -1) {
+                combinedZones[index] = {...combinedZones[index], ...zone};
+            }
+        }
+    });
+    
+    // Debug delle zone
+    console.log("Zone combinate:", combinedZones);
+    
+    combinedZones.forEach(zone => {
         if (!zone || zone.id === undefined) return;
         
         const zoneCard = document.createElement('div');
@@ -170,7 +197,7 @@ function renderZonesSettings(zones) {
             <div class="input-group">
                 <label for="zone-pin-${zone.id}">PIN:</label>
                 <input type="number" id="zone-pin-${zone.id}" class="input-control zone-pin-input" 
-                       value="${zone.pin !== undefined ? zone.pin : ''}" min="0" max="40" 
+                       value="${zone.pin !== undefined ? zone.pin : (14 + zone.id)}" min="0" max="40" 
                        placeholder="Numero pin" data-zone-id="${zone.id}">
             </div>
             <div class="input-group">
@@ -211,6 +238,7 @@ function renderZonesSettings(zones) {
         }
     });
 }
+
 
 // Mostra/nascondi le impostazioni WiFi client
 function toggleWifiClientSettings(enable) {
@@ -450,7 +478,7 @@ function saveWifiSettings() {
     });
 }
 
-// Salva le impostazioni delle zone
+// Funzione per salvare le impostazioni delle zone
 function saveZonesSettings() {
     if (!settingsModified.zones) {
         showToast('Nessuna modifica da salvare', 'info');
