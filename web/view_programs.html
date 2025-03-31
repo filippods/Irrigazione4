@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Visualizza Programmi</title>
+    <style>
+        /* Stili definiti direttamente per evitare il file styles.css */
+        body {
+            background: linear-gradient(135deg, #f0f0f0 25%, #e0e0e0 100%);
+            margin: 0;
+            font-family: 'Poppins', sans-serif;
+            color: #333;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            padding-top: 15px;
+        }
+
+        .container {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            padding: 10px;
+            gap: 10px;
+        }
+
+        .program-card {
+            border: 1px solid transparent;
+            border-radius: 10px;
+            margin: 5px;
+            padding: 15px;
+            background: linear-gradient(135deg, #fff, #f9f9f9);
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+            transition: transform 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
+            position: relative;
+            width: 90%;
+            max-width: 400px;
+        }
+
+        .program-card:hover {
+            background-color: #f1f1f1;
+            box-shadow: 0 6px 15px rgba(0, 136, 255, 0.2), 0 4px 8px rgba(255, 0, 150, 0.2);
+            transform: translateY(-5px);
+        }
+
+        /* Colore verde chiaro quando il programma è attivo */
+        .active-program {
+            background-color: #e0ffe0;
+            border-color: #00cc66;
+            box-shadow: 0 4px 12px rgba(0, 255, 0, 0.3);
+        }
+
+        .active-indicator {
+            background-color: #00cc66;
+            color: white;
+            padding: 5px;
+            text-align: center;
+            border-radius: 5px;
+            margin-bottom: 10px;
+            font-weight: bold;
+        }
+
+        .program-card h3 {
+            margin-bottom: 5px;
+            margin-top: 0;
+            padding: 10px;
+            color: white;
+            background: #0099ff;
+            font-size: 1.5rem;
+            text-align: center;
+            font-weight: bold;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            border-radius: 8px;
+            word-wrap: break-word;
+        }
+
+        .section {
+            margin-bottom: 10px;
+            padding: 10px;
+            background: #f9f9f9;
+            border-radius: 8px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
+
+        .section-title {
+            font-size: 1rem;
+            font-weight: bold;
+            color: #555;
+        }
+
+        .section-content {
+            font-size: 0.9rem;
+            font-weight: normal;
+            color: #333;
+        }
+
+        .zone-list, .months-list {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 5px;
+            padding: 0;
+            list-style-type: none;
+            width: 100%;
+        }
+
+        .zone-list li, .months-list li {
+            padding: 5px;
+            border-radius: 5px;
+            font-size: 12px;
+            color: white;
+            text-align: center;
+            transition: background-color 0.3s ease;
+        }
+
+        .active-zone {
+            background-color: #0099ff;
+        }
+
+        .inactive-zone {
+            background-color: #bbb;
+        }
+
+        .btn-group {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .on-off-group, .edit-delete-group {
+            display: flex;
+            justify-content: space-between;
+            gap: 10px;
+        }
+
+        .auto-group {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 10px;
+            gap: 10px;
+        }
+        
+        .auto-enable, .auto-disable {
+            width: 48%;
+            padding: 8px 12px;
+            text-align: center;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+        }
+        
+        .auto-enable {
+            background-color: #00cc66;
+            color: white;
+        }
+        
+        .auto-disable {
+            background-color: #ff9900;
+            color: white;
+        }
+        
+        .auto-enable.active, .auto-disable.active {
+            border: 2px solid #333;
+        }
+
+        .on-btn, .off-btn, .edit-btn, .delete-btn {
+            display: inline-block;
+            padding: 10px 15px;
+            text-align: center;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background-color 0.3s ease, box-shadow 0.2s ease;
+            border: none;
+        }
+
+        .on-btn.active {
+            background-color: #00cc66;
+            color: white;
+        }
+
+        .on-btn.inactive {
+            background-color: grey;
+            color: white;
+        }
+
+        .off-btn.inactive {
+            background-color: red;
+            color: white;
+        }
+
+        .off-btn.active {
+            background-color: grey;
+            color: white;
+        }
+
+        .edit-btn {
+            background-color: #0099ff;
+            color: white;
+        }
+
+        .edit-btn:hover {
+            background-color: #007acc;
+        }
+
+        .delete-btn {
+            background-color: #ff3333;
+            color: white;
+        }
+
+        .delete-btn:hover {
+            background-color: #cc0000;
+        }
+
+        @media (max-width: 600px) {
+            .program-card {
+                width: 80%;
+            }
+
+            .zone-list, .months-list {
+                grid-template-columns: repeat(2, 1fr);
+            }
+
+            .on-btn, .off-btn, .edit-btn, .delete-btn {
+                width: 45%;
+            }
+        }
+        
+        /* Stato di caricamento */
+        .loading {
+            position: relative;
+            color: transparent !important;
+            pointer-events: none;
+        }
+        
+        .loading::after {
+            content: "";
+            position: absolute;
+            width: 16px;
+            height: 16px;
+            top: 50%;
+            left: 50%;
+            margin-top: -8px;
+            margin-left: -8px;
+            border-radius: 50%;
+            border: 2px solid rgba(255, 255, 255, 0.25);
+            border-top-color: #ffffff;
+            animation: button-loading-spinner 1s linear infinite;
+        }
+        
+        @keyframes button-loading-spinner {
+            from {
+                transform: rotate(0turn);
+            }
+            to {
+                transform: rotate(1turn);
+            }
+        }
+    </style>
+</head>
+<body>
+    <main>
+        <div class="container" id="program-container">
+            <!-- I programmi verranno visualizzati qui -->
+        </div>
+    </main>
+    <script src="view_programs.js"></script>
+</body>
+</html>
